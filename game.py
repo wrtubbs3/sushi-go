@@ -5,7 +5,7 @@ from cards import *
 from players import Player
 from math import floor
 from sys import exit
-from agents import QLearningAgent, MonteCarloAgent
+# from agents import QLearningAgent, MonteCarloAgent
 
 class SushiGo:
     def __init__(self, n, player_names, player_strategies):
@@ -240,8 +240,8 @@ class SushiGo:
 
         # Each player selects one card to keep
         for i in range(n_players):
-            # Temporary implementation: select the card at index = 0 to keep
-            card_to_keep_idx = self.select_card(cards_in_hand[i], cards_on_table[i], players[i].strategy)
+            # Select card based on player strategy
+            card_to_keep_idx = self.select_card(cards_in_hand[i], cards_on_table[i], players[i])
             card_to_keep = cards_in_hand[i].pop(card_to_keep_idx)
 
             # Add the selected card to list of cards on table for given player
@@ -259,12 +259,13 @@ class SushiGo:
 
         return players
     
-    def select_card(self, cards_in_hand, cards_on_table, strategy):
+    def select_card(self, cards_in_hand, cards_on_table, player):
         """Select card to keep based on the strategy selected. 'cards_in_hand' and 'cards_on_table' 
-        are both lists of cards. 'strategy' is a string."""
+        are both lists of cards. 'player' is a Player object."""
 
         n_cards_in_hand = len(cards_in_hand)
         n_cards_on_table = len(cards_on_table)
+        strategy = player.strategy
 
         # For each strategy, identify index of card to keep
         if n_cards_in_hand == 1:
@@ -375,7 +376,26 @@ class SushiGo:
                 else: # all remaining cards are chopsticks
                     card_to_keep_idx = 0
                     break
-            
+        
+        elif strategy == "q-learning":
+            # Simple state: counts of each card type in hand
+            state_dict = {}
+            for c in cards_in_hand:
+                state_dict[c.type] = state_dict.get(c.type, 0) + 1
+
+            # Which actions are possible
+            actions_dict = {f"play_{c.type}": 1 for c in cards_in_hand}
+
+            # Call the player’s agent
+            action = player.agent.step(state_dict, actions_dict)
+
+            # Map chosen action back to card index
+            card_to_keep_idx = 0
+            for i, c in enumerate(cards_in_hand):
+                if action.endswith(c.type):  # match "play_tempura" to card.type == "tempura"
+                    card_to_keep_idx = i
+                    break
+
         else: # default
             card_to_keep_idx = 0
 

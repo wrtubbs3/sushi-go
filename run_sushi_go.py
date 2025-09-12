@@ -62,5 +62,3 @@ for i in range(n_players):
 #     for i in range(n_winners):
 #         winner_list.append(player_names[winner_idx[i]])
 #         print(winner_list[i])
-
-

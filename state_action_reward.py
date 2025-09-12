@@ -2,6 +2,7 @@
 
 import pandas as pd
 import numpy as np
+import itertools
 
 # =======================================================================================
 # Machine Learning - Reinforcement Learning
@@ -67,9 +68,7 @@ def states():
     # Total possible states = 1.3 x 1E10
     #
     # {counting cards on}: same states as above, plus cards on table for other players, plus cards played in previous hands
-
-
-
+    
     # Normal cards
     norm_cards = {"RED":2,"GRE":2,"BLU":2,"YEL":2}
     spec_cards = {"SKI":1,"REV":1,"PL2":1}

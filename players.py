@@ -1,13 +1,17 @@
-class Player:
-    def __init__(self, name, strategy):
-        """Player name is a string. Strategy is a string, options are: "random", "sequential", "user choice", "hierarchy" """
+  class Player:
+    def __init__(self, name, strategy, agent=None):
+        """
+        Player name is a string.
+        Strategy is one of: "random", "sequential", "user choice", "hierarchy", "q-learning"
+        """
         self.points = 0
         self.cards_in_hand = []
         self.cards_on_table = []
         self.name = name
-        
+        self.agent = agent
+
         # Default strategy: random
-        if not ((strategy == "random") or (strategy == "sequential") or (strategy == "user choice") or ("hierarchy")):
+        if strategy not in ["random", "sequential", "user choice", "hierarchy", "q-learning"]:
             self.strategy = "random"
         else:
             self.strategy = strategy
