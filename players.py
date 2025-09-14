@@ -1,10 +1,11 @@
 from agents import QLearningAgent
 
 class Player:
-    def __init__(self, name, strategy):
+    def __init__(self, name, strategy, q_table_file=None):
         """
         Player name is a string.
-        Strategy is one of: "random", "sequential", "user choice", "hierarchy", "q-learning"
+        Strategy is one of: "random", "sequential", "user choice", "hierarchy", "q-learning".
+        If strategy == "q-learning", you can optionally provide q_table_file to load a saved Q-table.
         """
         self.points = 0
         self.cards_in_hand = []
@@ -19,9 +20,17 @@ class Player:
 
         # If applicable, determine agent
         if self.strategy == "q-learning":
-            self.agent = QLearningAgent
+            self.agent = QLearningAgent(alpha=0.1, gamma=0.9, epsilon=0.2)
+
+            # Load Q-table if provided
+            if q_table_file is not None:
+                try:
+                    self.agent.load(q_table_file)
+                    print(f"[INFO] {self.name} loaded Q-table from {q_table_file}.npy")
+                except Exception as e:
+                    print(f"[WARN] Could not load Q-table for {self.name} from {q_table_file}: {e}")
         else:
-            self.agent = []
+            self.agent = None
 
     def __str__(self):
         return f"Player Name: {self.name}\n"

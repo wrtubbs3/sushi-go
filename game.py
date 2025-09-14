@@ -5,10 +5,9 @@ from cards import *
 from players import Player
 from math import floor
 from sys import exit
-# from agents import QLearningAgent, MonteCarloAgent
 
 class SushiGo:
-    def __init__(self, n, player_names, player_strategies):
+    def __init__(self, n, player_names, player_strategies, player_qtables=None):
         """[n] is an integer representing the number of players. [player_names] is a length-n list 
         of strings containing each player's name. [player_strategies] is a lengh-n list containing
         each player's strategy."""
@@ -40,6 +39,9 @@ class SushiGo:
             print('Error! This game is only for 2-5 players.')
             return
         
+        if player_qtables is None:
+            player_qtables = [None] * n
+        
         # Create players
         self.players = []
         for i in range(self.n_players):
@@ -47,7 +49,7 @@ class SushiGo:
             # name = input(f"Input Player {j} Name:  ")
             # strategy = input(f"Input Player {j} Strategy: ")
             # self.players.append(Player(name, strategy))
-            self.players.append(Player(player_names[i], player_strategies[i]))
+            self.players.append(Player(player_names[i], player_strategies[i], player_qtables[i]))
 
     def play_game(self):
         
@@ -378,13 +380,45 @@ class SushiGo:
                     break
         
         elif strategy == "q-learning":
-            # Simple state: counts of each card type in hand
-            state_dict = {}
-            for c in cards_in_hand:
-                state_dict[c.type] = state_dict.get(c.type, 0) + 1
+            
+            # Define current state dictionary
+            state_dict = {
+                "wasabi_in_hand": sum(1 for c in cards_in_hand if c.type == "wasabi"),
+                "egg_nigiri_in_hand": sum(1 for c in cards_in_hand if c.type == "nigiri" and c.subtype == 1),
+                "salmon_nigiri_in_hand": sum(1 for c in cards_in_hand if c.type == "nigiri" and c.subtype == 2),
+                "squid_nigiri_in_hand": sum(1 for c in cards_in_hand if c.type == "nigiri" and c.subtype == 3),
+                "tempura_in_hand": sum(1 for c in cards_in_hand if c.type == "tempura"),
+                "sashimi_in_hand": sum(1 for c in cards_in_hand if c.type == "sashimi"),
+                "dumpling_in_hand": sum(1 for c in cards_in_hand if c.type == "dumpling"),
+                "pudding_in_hand": sum(1 for c in cards_in_hand if c.type == "pudding"),
+                "maki_1_in_hand": sum(1 for c in cards_in_hand if c.type == "maki" and c.subtype == 1),
+                "maki_2_in_hand": sum(1 for c in cards_in_hand if c.type == "maki" and c.subtype == 2),
+                "maki_3_in_hand": sum(1 for c in cards_in_hand if c.type == "maki" and c.subtype == 3),
+                "chopsticks_in_hand": sum(1 for c in cards_in_hand if c.type == "chopsticks"),
+                "free_wasabi_on_table": count_free_wasabi(cards_on_table),
+                "free_tempura_on_table": sum(1 for c in cards_on_table if c.type == "tempura") % 2,
+                "free_sashimi_on_table": sum(1 for c in cards_on_table if c.type == "sashimi") % 3,
+                "dumpling_on_table": sum(1 for c in cards_on_table if c.type == "dumpling"),
+                "pudding_on_table": sum(1 for c in cards_on_table if c.type == "pudding"),
+                "maki_points_on_table": sum(c.subtype for c in cards_on_table if c.type == "maki"),
+                "cards_in_hand": len(cards_in_hand),
+            }
 
             # Which actions are possible
-            actions_dict = {f"play_{c.type}": 1 for c in cards_in_hand}
+            actions_dict = {
+                "play_wasabi": state_dict["wasabi_in_hand"] > 0,
+                "play_highest_nigiri": (state_dict["egg_nigiri_in_hand"] +
+                                        state_dict["salmon_nigiri_in_hand"] +
+                                        state_dict["squid_nigiri_in_hand"]) > 0,
+                "play_tempura": state_dict["tempura_in_hand"] > 0,
+                "play_sashimi": state_dict["sashimi_in_hand"] > 0,
+                "play_dumpling": state_dict["dumpling_in_hand"] > 0,
+                "play_pudding": state_dict["pudding_in_hand"] > 0,
+                "play_highest_maki": (state_dict["maki_1_in_hand"] +
+                                    state_dict["maki_2_in_hand"] +
+                                    state_dict["maki_3_in_hand"]) > 0,
+                "play_chopsticks": state_dict["chopsticks_in_hand"] > 0,
+            }
 
             # Call the player’s agent
             action = player.agent.step(state_dict, actions_dict)
@@ -447,3 +481,21 @@ class SushiGo:
         print (f'Execution lasted {round(timer_dur/60,2)} minutes ({round(iterations/timer_dur,2)} games per second)')
         
         return winners, turns, agent
+
+def count_free_wasabi(cards_on_table):
+    """Return the number of wasabi cards on table that have not yet been paired with a nigiri."""
+
+    free_wasabi = 0
+    pending_wasabi = 0
+
+    for card in cards_on_table:
+        if card.type == "wasabi":
+            # new wasabi waiting for a nigiri
+            pending_wasabi += 1
+        elif card.type == "nigiri" and pending_wasabi > 0:
+            # first pending wasabi gets paired with this nigiri
+            pending_wasabi -= 1
+        # else: ignore (either nigiri without wasabi, or other card)
+
+    free_wasabi = pending_wasabi
+    return free_wasabi

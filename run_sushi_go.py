@@ -5,11 +5,14 @@ import statistics
 import config
 from game import SushiGo
 
-n_players = 3 # From 2-5 players allowed
-player_names = ['Al', 'Bob', 'Charlie']
-player_strategies = ['hierarchy', 'random', 'sequential']
+# From 2-5 players allowed
+player_names = ['Al', 'Bob', 'Charlie', 'Doug']
+n_players = len(player_names)
+player_strategies = ['hierarchy', 'random', 'sequential', 'q-learning']
+# player_qtables = [None, None, None, 'file.npy']
 
 game = SushiGo(n_players, player_names, player_strategies)
+# game = SushiGo(n_players, player_names, player_strategies, player_qtables=player_qtables)
 
 # Number of games to simulate
 n_games = config.params['iterations']
