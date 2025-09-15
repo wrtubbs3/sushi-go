@@ -2,10 +2,11 @@
 
 # Imports
 import statistics
-import config
 import numpy as np
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 from game import SushiGo
+import config
 
 # From 2-5 players allowed
 player_names = ['Al', 'Bob', 'Charlie', 'Doug']
@@ -20,12 +21,10 @@ game = SushiGo(n_players, player_names, player_strategies)
 n_games = config.params['iterations']
 
 # Initialize game log for statistical tracking
-game_score_log = []
-for i in range(n_players):
-    game_score_log.append([])
+game_score_log = [[] for _ in range(n_players)]
 
 # Simulate games
-for i in range(n_games):
+for i in tqdm(range(n_games)):
     game_score = game.play_game()
 
     for j in range(n_players):
@@ -63,7 +62,7 @@ for i in range(n_players):
     raw_scores = np.array(game_score_log[i])
 
     # Smoothed (rolling average with window)
-    window = 50
+    window = 100
     smoothed = np.convolve(raw_scores, np.ones(window)/window, mode='valid')
 
     plt.plot(range(1, len(raw_scores)+1), raw_scores, alpha=0.2, label=f"{player_names[i]} (raw)")

@@ -82,6 +82,14 @@ class SushiGo:
                 self.players[i].cards_in_hand = []
                 self.players[i].cards_on_table = []
         
+        # --- END OF GAME BONUS UPDATE ---
+        for i, player in enumerate(self.players):
+            if player.strategy == "q-learning" and player.agent is not None:
+                final_reward = player.points  # full game score
+                next_state_dict = {"cards_in_hand": 0}  # terminal state
+                next_actions_dict = {a: False for a in player.agent.actions}
+                player.agent.update(final_reward, next_state_dict, next_actions_dict)
+
         # Create list of each player's points total, and reset player points to zero for next game
         total_points = []
         for i in range(self.n_players):
@@ -228,7 +236,6 @@ class SushiGo:
         return pts_total
     
     def play_hand(self, players):
-        
         n_players = len(players)
 
         cards_in_hand = []
@@ -242,12 +249,63 @@ class SushiGo:
 
         # Each player selects one card to keep
         for i in range(n_players):
+            player = players[i]
+
+            # --- BEFORE ACTION: points baseline ---
+            old_points = self.count_points([player])[0]
+
             # Select card based on player strategy
-            card_to_keep_idx = self.select_card(cards_in_hand[i], cards_on_table[i], players[i])
+            card_to_keep_idx = self.select_card(cards_in_hand[i], cards_on_table[i], player)
             card_to_keep = cards_in_hand[i].pop(card_to_keep_idx)
 
             # Add the selected card to list of cards on table for given player
-            players[i].cards_on_table.append(card_to_keep)
+            player.cards_on_table.append(card_to_keep)
+
+            # --- AFTER ACTION: new points ---
+            new_points = self.count_points([player])[0]
+            reward = new_points - old_points  # incremental reward
+
+            # If Q-learning, update agent
+            if player.strategy == "q-learning" and player.agent is not None:
+                # Build next state dict (same logic as in select_card)
+                next_state_dict = {
+                    "wasabi_in_hand": sum(1 for c in player.cards_in_hand if c.type == "wasabi"),
+                    "egg_nigiri_in_hand": sum(1 for c in player.cards_in_hand if c.type == "nigiri" and c.subtype == 1),
+                    "salmon_nigiri_in_hand": sum(1 for c in player.cards_in_hand if c.type == "nigiri" and c.subtype == 2),
+                    "squid_nigiri_in_hand": sum(1 for c in player.cards_in_hand if c.type == "nigiri" and c.subtype == 3),
+                    "tempura_in_hand": sum(1 for c in player.cards_in_hand if c.type == "tempura"),
+                    "sashimi_in_hand": sum(1 for c in player.cards_in_hand if c.type == "sashimi"),
+                    "dumpling_in_hand": sum(1 for c in player.cards_in_hand if c.type == "dumpling"),
+                    "pudding_in_hand": sum(1 for c in player.cards_in_hand if c.type == "pudding"),
+                    "maki_1_in_hand": sum(1 for c in player.cards_in_hand if c.type == "maki" and c.subtype == 1),
+                    "maki_2_in_hand": sum(1 for c in player.cards_in_hand if c.type == "maki" and c.subtype == 2),
+                    "maki_3_in_hand": sum(1 for c in player.cards_in_hand if c.type == "maki" and c.subtype == 3),
+                    "chopsticks_in_hand": sum(1 for c in player.cards_in_hand if c.type == "chopsticks"),
+                    "free_wasabi_on_table": count_free_wasabi(player.cards_on_table),
+                    "free_tempura_on_table": sum(1 for c in player.cards_on_table if c.type == "tempura") % 2,
+                    "free_sashimi_on_table": sum(1 for c in player.cards_on_table if c.type == "sashimi") % 3,
+                    "dumpling_on_table": sum(1 for c in player.cards_on_table if c.type == "dumpling"),
+                    "pudding_on_table": sum(1 for c in player.cards_on_table if c.type == "pudding"),
+                    "maki_points_on_table": sum(c.subtype for c in player.cards_on_table if c.type == "maki"),
+                    "cards_in_hand": len(player.cards_in_hand),
+                }
+
+                next_actions_dict = {
+                    "play_wasabi": next_state_dict["wasabi_in_hand"] > 0,
+                    "play_highest_nigiri": (next_state_dict["egg_nigiri_in_hand"] +
+                                            next_state_dict["salmon_nigiri_in_hand"] +
+                                            next_state_dict["squid_nigiri_in_hand"]) > 0,
+                    "play_tempura": next_state_dict["tempura_in_hand"] > 0,
+                    "play_sashimi": next_state_dict["sashimi_in_hand"] > 0,
+                    "play_dumpling": next_state_dict["dumpling_in_hand"] > 0,
+                    "play_pudding": next_state_dict["pudding_in_hand"] > 0,
+                    "play_highest_maki": (next_state_dict["maki_1_in_hand"] +
+                                        next_state_dict["maki_2_in_hand"] +
+                                        next_state_dict["maki_3_in_hand"]) > 0,
+                    "play_chopsticks": next_state_dict["chopsticks_in_hand"] > 0,
+                }
+
+                player.agent.update(reward, next_state_dict, next_actions_dict)
 
             # Identify list of remaining cards in hand, which will be passed to player on left
             cards_passed_left.append(cards_in_hand[i])

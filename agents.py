@@ -5,7 +5,7 @@ import pandas as pd
 import state_action_reward as sar
 
 class QLearningAgent:
-    def __init__(self, alpha=0.1, gamma=0.9, epsilon=0.2):
+    def __init__(self, alpha=0.1, gamma=0.9, epsilon=0.2, train=True):
         """
         Dictionary-based Q-learning agent.
         alpha = learning rate
@@ -15,8 +15,9 @@ class QLearningAgent:
         self.alpha = alpha
         self.gamma = gamma
         self.epsilon = epsilon
+        self.train = train
 
-        # Action space (fixed list from SAR)
+        # Action space
         self.actions = sar.actions()
 
         # Dictionary for Q-values: keys are (state_tuple, action), values are floats
@@ -101,6 +102,9 @@ class QLearningAgent:
         """
         Perform Q-learning update after observing a transition.
         """
+        if not self.train:
+            return
+        
         if self.prev_state is None or self.prev_action is None:
             return
 
