@@ -3,6 +3,8 @@
 # Imports
 import statistics
 import config
+import numpy as np
+import matplotlib.pyplot as plt
 from game import SushiGo
 
 # From 2-5 players allowed
@@ -51,6 +53,29 @@ for i in range(n_players):
     # print('Game log: ', game_score_log[i])
     print(player_names[i], 'finished with an average score of', avg_game_score[i], 'points using the', player_strategies[i], 'strategy.')    
     print(player_names[i], 'finished with standard deviation of', stdev_game_score[i], 'points using the', player_strategies[i], 'strategy.')    
+
+# ---------------------------------------------------
+# Plotting raw and smoothed scores
+# ---------------------------------------------------
+
+plt.figure(figsize=(12, 6))
+for i in range(n_players):
+    raw_scores = np.array(game_score_log[i])
+
+    # Smoothed (rolling average with window)
+    window = 50
+    smoothed = np.convolve(raw_scores, np.ones(window)/window, mode='valid')
+
+    plt.plot(range(1, len(raw_scores)+1), raw_scores, alpha=0.2, label=f"{player_names[i]} (raw)")
+    plt.plot(range(window, len(raw_scores)+1), smoothed, label=f"{player_names[i]} (avg)")
+
+plt.xlabel("Game Number")
+plt.ylabel("Score")
+plt.title("Sushi Go Scores During Training")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
 
 # # Determine which player(s) have the most points and print output
 # most_points = max(game_score)
