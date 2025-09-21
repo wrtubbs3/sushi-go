@@ -189,17 +189,17 @@ class QLearningAgent:
         print(f"[INFO] Agent saved to {filename_base}.pkl, {filename_base}.csv"
               f" (games_trained={self.games_trained})")
 
-    def load(self, filename_base="q_table"):
+    def load(self, filename="q_table"):
         """Load Q-table + metadata from .pkl (preferred)."""
         try:
-            with open(filename_base + ".pkl", "rb") as f:
+            with open(filename, "rb") as f:
                 data = pickle.load(f)
             self.q = data.get("q", {})
             self.alpha = data.get("alpha", self.alpha)
             self.gamma = data.get("gamma", self.gamma)
             self.epsilon = data.get("epsilon", self.epsilon)
             self.games_trained = data.get("games_trained", 0)
-            print(f"[INFO] Agent loaded from {filename_base}.pkl "
-                  f"(games_trained={self.games_trained}, q_size={len(self.q)})")
+            print(f"[INFO] Agent loaded from {filename}"
+                  f" (games_trained={self.games_trained}, q_size={len(self.q)})")
         except FileNotFoundError:
-            print(f"[WARN] No saved agent found at {filename_base}.pkl — starting fresh.")
+            print(f"[WARN] No saved agent found at {filename} — starting fresh.")

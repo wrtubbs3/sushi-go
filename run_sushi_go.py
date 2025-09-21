@@ -11,11 +11,11 @@ import config
 # From 2-5 players allowed
 player_names = ['Al', 'Bob', 'Charlie', 'Doug']
 n_players = len(player_names)
-player_strategies = ['hierarchy', 'random', 'sequential', 'q-learning']
-# player_qtables = [None, None, None, 'q_table.pkl']
+player_strategies = ['hierarchy', 'q-learning', 'q-learning', 'q-learning']
+player_qtables = [None, 'q_table.pkl', 'q_table.pkl', 'q_table.pkl']
 
-game = SushiGo(n_players, player_names, player_strategies)
-# game = SushiGo(n_players, player_names, player_strategies, player_qtables=player_qtables)
+# game = SushiGo(n_players, player_names, player_strategies)
+game = SushiGo(n_players, player_names, player_strategies, player_qtables=player_qtables)
 
 # Keep a reference to the Q-learning agent (if present)
 q_agent = None
