@@ -2,6 +2,7 @@
 import random
 import numpy as np
 import pandas as pd
+import pickle
 import state_action_reward as sar
 
 class QLearningAgent:
@@ -26,6 +27,9 @@ class QLearningAgent:
         # Track last state/action for updates
         self.prev_state = None
         self.prev_action = None
+
+        # Track training progress
+        self.games_trained = 0
 
     # -------------------------
     # State handling
@@ -123,28 +127,52 @@ class QLearningAgent:
         # Reset previous state/action
         self.prev_state, self.prev_action = None, None
 
-    # -------------------------
+        # -------------------------
     # Save & Load
     # -------------------------
     def save(self, filename_base="q_table"):
-        """Save Q-table as .npy (fast) and .csv (human-readable)."""
-        # Convert dict → DataFrame for CSV
+        """Save Q-table + metadata as .pkl and .csv."""
         if not self.q:
             print("[WARN] No Q-values to save.")
             return
 
+        # Prepare metadata
+        data = {
+            "q": self.q,
+            "alpha": self.alpha,
+            "gamma": self.gamma,
+            "epsilon": self.epsilon,
+            "games_trained": self.games_trained,
+        }
+
+        # Save pickle (full agent state)
+        with open(filename_base + ".pkl", "wb") as f:
+            pickle.dump(data, f)
+
+        # Save human-readable CSV
         states, actions, values = zip(*[(s, a, v) for (s, a), v in self.q.items()])
-        df = pd.DataFrame({"state": states, "action": actions, "value": values})
+        df = pd.DataFrame({
+            "state": states,
+            "action": actions,
+            "value": values,
+            "games_trained": self.games_trained,  # repeated in each row
+        })
         df.to_csv(filename_base + ".csv", index=False)
 
-        # Save numpy version too
-        np.save(filename_base + ".npy", self.q, allow_pickle=True)
-        print(f"[INFO] Q-table saved to {filename_base}.csv and {filename_base}.npy")
+        print(f"[INFO] Agent saved to {filename_base}.pkl, {filename_base}.csv"
+              f" (games_trained={self.games_trained})")
 
     def load(self, filename_base="q_table"):
-        """Load Q-table from .npy if available."""
+        """Load Q-table + metadata from .pkl (preferred)."""
         try:
-            self.q = np.load(filename_base + ".npy", allow_pickle=True).item()
-            print(f"[INFO] Q-table loaded from {filename_base}.npy")
+            with open(filename_base + ".pkl", "rb") as f:
+                data = pickle.load(f)
+            self.q = data.get("q", {})
+            self.alpha = data.get("alpha", self.alpha)
+            self.gamma = data.get("gamma", self.gamma)
+            self.epsilon = data.get("epsilon", self.epsilon)
+            self.games_trained = data.get("games_trained", 0)
+            print(f"[INFO] Agent loaded from {filename_base}.pkl "
+                  f"(games_trained={self.games_trained}, q_size={len(self.q)})")
         except FileNotFoundError:
-            print(f"[WARN] No saved Q-table found at {filename_base}.npy — starting fresh.")
+            print(f"[WARN] No saved agent found at {filename_base}.pkl — starting fresh.")

@@ -1,5 +1,6 @@
 params = {
     "iterations": 1000,
+    "save_every": 500,
     "algorithm": "q-learning", # ["q-learning", "monte-carlo"]
     "logging": False,
     "model": {

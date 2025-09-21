@@ -12,10 +12,17 @@ import config
 player_names = ['Al', 'Bob', 'Charlie', 'Doug']
 n_players = len(player_names)
 player_strategies = ['hierarchy', 'random', 'sequential', 'q-learning']
-# player_qtables = [None, None, None, 'file.npy']
+# player_qtables = [None, None, None, 'q_table.pkl']
 
 game = SushiGo(n_players, player_names, player_strategies)
 # game = SushiGo(n_players, player_names, player_strategies, player_qtables=player_qtables)
+
+# Keep a reference to the Q-learning agent (if present)
+q_agent = None
+for p in game.players:
+    if p.strategy == "q-learning":
+        q_agent = p.agent
+        break
 
 # Number of games to simulate
 n_games = config.params['iterations']
@@ -30,12 +37,25 @@ for i in tqdm(range(n_games)):
     for j in range(n_players):
         game_score_log[j].append(game_score[j])
 
+    if q_agent:
+        q_agent.games_trained += 1
+
+    # Periodically save Q-table if applicable
+    save_interval = config.params['save_every']
+    if q_agent and (i + 1) % save_interval == 0:
+        fname = f"q_table"
+        q_agent.save(fname)
+
 # run = tournament(
 #         iterations = config.params['iterations'],
 #         algo       = config.params['algorithm'],
 #         comment    = config.params['logging'],
 #         agent_info = config.params['model']
 #                 )
+
+# Save final Q-table if applicable
+if q_agent:
+    q_agent.save("q_table")
 
 # Compute statistics for each player
 total_score = []
