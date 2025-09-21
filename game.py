@@ -438,7 +438,7 @@ class SushiGo:
             card_to_keep_idx = 0
         
         elif strategy == "user choice":
-            print("User must select which card to keep.")
+            print("\nUser must select which card to keep.")
             
             # Display cards on table
             print("Cards currently on table: ")
