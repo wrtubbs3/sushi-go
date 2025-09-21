@@ -158,6 +158,9 @@ class QLearningAgent:
         if not self.q:
             print("[WARN] No Q-values to save.")
             return
+        
+        if not self.train:
+            return
 
         # Prepare metadata
         data = {
