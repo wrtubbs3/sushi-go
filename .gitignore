@@ -1,2 +1,4 @@
 # Python temp files
 __pycache__/
+q_table.pkl
+q_table.csv
