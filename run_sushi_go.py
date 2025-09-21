@@ -1,6 +1,7 @@
 # Sushi Go card game
 
-# Imports
+# Imports9
+import datetime
 import statistics
 import numpy as np
 import matplotlib.pyplot as plt
@@ -11,11 +12,11 @@ import config
 # From 2-5 players allowed
 player_names = ['Al', 'Bob', 'Charlie', 'Doug']
 n_players = len(player_names)
-player_strategies = ['hierarchy', 'q-learning', 'q-learning', 'q-learning']
-player_qtables = [None, 'q_table.pkl', 'q_table.pkl', 'q_table.pkl']
+player_strategies = ['hierarchy', 'hierarchy', 'q-learning', 'q-learning']
+# player_qtables = [None, 'q_table.pkl', 'q_table.pkl', 'q_table.pkl']
 
-# game = SushiGo(n_players, player_names, player_strategies)
-game = SushiGo(n_players, player_names, player_strategies, player_qtables=player_qtables)
+game = SushiGo(n_players, player_names, player_strategies)
+# game = SushiGo(n_players, player_names, player_strategies, player_qtables=player_qtables)
 
 # Keep a reference to the Q-learning agent (if present)
 q_agent = None
@@ -94,7 +95,18 @@ plt.title("Sushi Go Scores During Training")
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
+
+# Add timestamp to filename
+timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+filename = f"sushi_go_training_{timestamp}.png"
+
+# Save plot as PNG
+plt.savefig(filename, dpi=300)
+
+# Show on screen
 plt.show()
+
+print(f"[INFO] Plot saved as {filename}")
 
 # # Determine which player(s) have the most points and print output
 # most_points = max(game_score)

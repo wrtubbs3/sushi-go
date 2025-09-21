@@ -26,7 +26,7 @@ class Player:
             if q_table_file is not None:
                 try:
                     self.agent.load(q_table_file)
-                    print(f"[INFO] {self.name} loaded Q-table from {q_table_file}.npy")
+                    print(f"[INFO] {self.name} loaded Q-table from {q_table_file}")
                 except Exception as e:
                     print(f"[WARN] Could not load Q-table for {self.name} from {q_table_file}: {e}")
         else:

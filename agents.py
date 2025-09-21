@@ -129,14 +129,10 @@ class QLearningAgent:
         # Reset previous state/action
         self.prev_state, self.prev_action = None, None
 
-    def update_from_observation(self, state_dict, action, reward, next_state_dict, next_actions_dict):
+    def update_from_observation(self, state_dict, action, reward, next_state_dict, next_actions_dict, alpha_obs=None):
         """
-        Off-policy update from observing another player's move.
-        state_dict: state before the action
-        action: action taken by the other player
-        reward: reward they got
-        next_state_dict: resulting state
-        next_actions_dict: valid actions in next state
+        Q-learning update for observing other players' transitions.
+        Uses a smaller learning rate (alpha_obs).
         """
         if not self.train:
             return
@@ -144,14 +140,14 @@ class QLearningAgent:
         state = self._state_to_tuple(state_dict)
         next_state = self._state_to_tuple(next_state_dict)
 
-        possible_actions = [a for a, ok in next_actions_dict.items() if ok]
-        if possible_actions:
-            max_future_q = max(self.get_q(next_state, a) for a in possible_actions)
+        if any(next_actions_dict.values()):
+            max_future_q = max(self.get_q(next_state, a) for a, ok in next_actions_dict.items() if ok)
         else:
             max_future_q = 0.0
 
         old_q = self.get_q(state, action)
-        new_q = old_q + self.alpha * (reward + self.gamma * max_future_q - old_q)
+        lr = alpha_obs if alpha_obs is not None else self.alpha * 0.2  # default to 20% of alpha
+        new_q = old_q + lr * (reward + self.gamma * max_future_q - old_q)
         self.set_q(state, action, new_q)
 
     # -------------------------
