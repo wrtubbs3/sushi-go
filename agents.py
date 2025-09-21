@@ -65,7 +65,9 @@ class QLearningAgent:
     # Q-value helpers
     # -------------------------
     def get_q(self, state, action):
-        return self.q.get((state, action), 0.0)
+        if (state, action) not in self.q:
+            self.q[(state, action)] = 0.0
+        return self.q[(state, action)]
 
     def set_q(self, state, action, value):
         self.q[(state, action)] = value

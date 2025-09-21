@@ -238,6 +238,9 @@ class SushiGo:
     def play_hand(self, players):
         n_players = len(players)
 
+        # --- BEFORE ACTION: points baseline ---
+        old_points = self.count_points(players)
+
         cards_in_hand = []
         cards_on_table = []
         cards_passed_left = []
@@ -251,9 +254,6 @@ class SushiGo:
         for i in range(n_players):
             player = players[i]
 
-            # --- BEFORE ACTION: points baseline ---
-            old_points = self.count_points([player])[0]
-
             # Select card based on player strategy
             card_to_keep_idx = self.select_card(cards_in_hand[i], cards_on_table[i], player)
             card_to_keep = cards_in_hand[i].pop(card_to_keep_idx)
@@ -261,9 +261,15 @@ class SushiGo:
             # Add the selected card to list of cards on table for given player
             player.cards_on_table.append(card_to_keep)
 
-            # --- AFTER ACTION: new points ---
-            new_points = self.count_points([player])[0]
-            reward = new_points - old_points  # incremental reward
+        # --- AFTER ACTION: new points ---
+        new_points = self.count_points(players)
+
+        # Update agent for each player as applicable
+        for i in range(n_players):
+            player = players[i]
+            
+            # Compute reward for action
+            reward = new_points[i] - old_points[i]  # incremental reward
 
             # If Q-learning, update agent
             if player.strategy == "q-learning" and player.agent is not None:
@@ -305,6 +311,7 @@ class SushiGo:
                     "play_chopsticks": next_state_dict["chopsticks_in_hand"] > 0,
                 }
 
+                # Perform Q-learning update
                 player.agent.update(reward, next_state_dict, next_actions_dict)
 
             # Identify list of remaining cards in hand, which will be passed to player on left
