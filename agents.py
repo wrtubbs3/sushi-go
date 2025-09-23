@@ -77,9 +77,8 @@ class QLearningAgent:
     # -------------------------
     def step(self, state_dict, actions_dict):
         """
-        Choose the next action using epsilon-greedy policy.
-        state_dict: dict of card counts/features
-        actions_dict: dict {action: True/False} indicating valid actions
+        Choose the next action using epsilon-greedy policy when training,
+        or on-policy (pure exploitation) when not training.
         """
         state = self._state_to_tuple(state_dict)
         possible_actions = [a for a, ok in actions_dict.items() if ok]
@@ -87,14 +86,19 @@ class QLearningAgent:
         if not possible_actions:
             return random.choice(self.actions)  # fallback
 
-        # Epsilon-greedy
-        if random.random() < self.epsilon:
-            action = random.choice(possible_actions)
-        else:
-            # Exploit: choose action with highest Q
+        if not self.train:
+            # On-policy: always pick the best action
             q_vals = [(a, self.get_q(state, a)) for a in possible_actions]
             random.shuffle(q_vals)  # break ties randomly
             action = max(q_vals, key=lambda x: x[1])[0]
+        else:
+            # Training: epsilon-greedy
+            if random.random() < self.epsilon:
+                action = random.choice(possible_actions)
+            else:
+                q_vals = [(a, self.get_q(state, a)) for a in possible_actions]
+                random.shuffle(q_vals)  # break ties randomly
+                action = max(q_vals, key=lambda x: x[1])[0]
 
         # Store for update
         self.prev_state = state
