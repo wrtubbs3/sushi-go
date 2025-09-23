@@ -91,6 +91,7 @@ class QLearningAgent:
             q_vals = [(a, self.get_q(state, a)) for a in possible_actions]
             random.shuffle(q_vals)  # break ties randomly
             action = max(q_vals, key=lambda x: x[1])[0]
+            return action
         else:
             # Training: epsilon-greedy
             if random.random() < self.epsilon:
