@@ -5,6 +5,18 @@ import pandas as pd
 import pickle
 import state_action_reward as sar
 
+# Q-Learning Agent:
+# 
+# q(s,a) = q(s,a) + alpha*(r + q(s_hat, a_hat) - q(s,a))
+#
+# where s is the state vector, a is the action vector, r is the reward for the next step,
+# and alpha is the step size parameter. s_hat and a_hat refer to the vectors for the next
+# # step. Using the epsilon-greedy algorithm, given a state
+# the agent chooses an action as follows:
+#   -- With epsilon probability: random action
+#   -- With (1-epsilon) probability: action with maximum q value
+#
+
 class QLearningAgent:
     def __init__(self, alpha=0.1, gamma=0.9, epsilon=0.2, train=True):
         """

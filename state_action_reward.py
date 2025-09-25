@@ -4,38 +4,6 @@ import pandas as pd
 import numpy as np
 import itertools
 
-# =======================================================================================
-# Machine Learning - Reinforcement Learning
-# =======================================================================================
-# 
-# Monte Carlo Agent:
-#
-# q(s,a) = q(s,a) + alpha*(R - q(s,a))
-#
-# (Brunton version)
-# q(s,a) = q(s,a) + (1/n)*(R - q(s,a))
-# 
-# where s is the state vector, a is the action vector, R is the reward for this episode,
-# and alpha is the step size parameter. Using the epsilon-greedy algorithm, given a state
-# the agent chooses an action as follows:
-#   -- With epsilon probability: random action
-#   -- With (1-epsilon) probability: action with maximum q value
-#
-#
-# Q-Learning Agent:
-# 
-# q(s,a) = q(s,a) + alpha*(r + q(s_hat, a_hat) - q(s,a))
-#
-# where s is the state vector, a is the action vector, r is the reward for the next step,
-# and alpha is the step size parameter. s_hat and a_hat refer to the vectors for the next
-# # step. Using the epsilon-greedy algorithm, given a state
-# the agent chooses an action as follows:
-#   -- With epsilon probability: random action
-#   -- With (1-epsilon) probability: action with maximum q value
-#
-#
-
-
 def states():
     """
     Build all possible state combinations for Sushi Go based on card counts.

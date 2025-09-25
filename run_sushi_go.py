@@ -1,6 +1,6 @@
 # Sushi Go card game
 
-# Imports9
+# Imports
 import datetime
 import statistics
 import numpy as np
@@ -12,8 +12,8 @@ import config
 # From 2-5 players allowed
 player_names = ['Al', 'Bob', 'Charlie', 'Doug']
 n_players = len(player_names)
-player_strategies = ['hierarchy', 'hierarchy', 'q-learning', 'q-learning']
-player_qtables = [None, None, 'q_table_4_players.pkl', 'q_table_4_players.pkl']
+player_strategies = ['hierarchy', 'q-learning', 'q-learning', 'q-learning']
+player_qtables = [None, 'q_table_2_players.pkl', 'q_table_3_players.pkl', 'q_table_4_players.pkl']
 
 # game = SushiGo(n_players, player_names, player_strategies)
 game = SushiGo(n_players, player_names, player_strategies, player_qtables=player_qtables)
@@ -32,6 +32,9 @@ n_games = config.params['iterations']
 # Initialize game log for statistical tracking
 game_score_log = [[] for _ in range(n_players)]
 
+# Q-agent training file name (if applicable)
+q_table_filename = f"q_table"
+
 # Simulate games
 for i in tqdm(range(n_games)):
     game_score = game.play_game()
@@ -45,7 +48,7 @@ for i in tqdm(range(n_games)):
     # Periodically save Q-table if applicable
     save_interval = config.params['save_every']
     if q_agent and (i + 1) % save_interval == 0:
-        fname = f"q_table"
+        fname = q_table_filename
         q_agent.save(fname)
 
 # run = tournament(
@@ -57,7 +60,7 @@ for i in tqdm(range(n_games)):
 
 # Save final Q-table if applicable
 if q_agent:
-    q_agent.save("q_table")
+    q_agent.save(q_table_filename)
 
 # Compute statistics for each player
 total_score = []
@@ -84,7 +87,7 @@ for i in range(n_players):
     raw_scores = np.array(game_score_log[i])
 
     # Smoothed (rolling average with window)
-    window = 100
+    window = int(n_games/100) if n_games >= 100 else 1
     smoothed = np.convolve(raw_scores, np.ones(window)/window, mode='valid')
 
     plt.plot(range(1, len(raw_scores)+1), raw_scores, alpha=0.2, label=f"{player_names[i]} (raw)")
