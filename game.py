@@ -352,43 +352,11 @@ class SushiGo:
             state_dict, actions_dict, chosen_action = actions_taken[i][1], actions_taken[i][2], actions_taken[i][3]
             reward = new_points[i] - old_points[i]  # incremental reward
 
-            # Build next state dict
-            next_state_dict = {
-                "wasabi_in_hand": sum(1 for c in player.cards_in_hand if c.type == "wasabi"),
-                "egg_nigiri_in_hand": sum(1 for c in player.cards_in_hand if c.type == "nigiri" and c.subtype == 1),
-                "salmon_nigiri_in_hand": sum(1 for c in player.cards_in_hand if c.type == "nigiri" and c.subtype == 2),
-                "squid_nigiri_in_hand": sum(1 for c in player.cards_in_hand if c.type == "nigiri" and c.subtype == 3),
-                "tempura_in_hand": sum(1 for c in player.cards_in_hand if c.type == "tempura"),
-                "sashimi_in_hand": sum(1 for c in player.cards_in_hand if c.type == "sashimi"),
-                "dumpling_in_hand": sum(1 for c in player.cards_in_hand if c.type == "dumpling"),
-                "pudding_in_hand": sum(1 for c in player.cards_in_hand if c.type == "pudding"),
-                "maki_1_in_hand": sum(1 for c in player.cards_in_hand if c.type == "maki" and c.subtype == 1),
-                "maki_2_in_hand": sum(1 for c in player.cards_in_hand if c.type == "maki" and c.subtype == 2),
-                "maki_3_in_hand": sum(1 for c in player.cards_in_hand if c.type == "maki" and c.subtype == 3),
-                "chopsticks_in_hand": sum(1 for c in player.cards_in_hand if c.type == "chopsticks"),
-                "free_wasabi_on_table": count_free_wasabi(player.cards_on_table),
-                "free_tempura_on_table": sum(1 for c in player.cards_on_table if c.type == "tempura") % 2,
-                "free_sashimi_on_table": sum(1 for c in player.cards_on_table if c.type == "sashimi") % 3,
-                "dumpling_on_table": sum(1 for c in player.cards_on_table if c.type == "dumpling"),
-                "pudding_on_table": sum(1 for c in player.cards_on_table if c.type == "pudding"),
-                "maki_points_on_table": sum(c.subtype for c in player.cards_on_table if c.type == "maki"),
-                "cards_in_hand": len(player.cards_in_hand),
-            }
+            # Construct next state dictionary
+            next_state_dict = build_state_dict(cards_in_hand, cards_on_table)
 
-            next_actions_dict = {
-                "play_wasabi": next_state_dict["wasabi_in_hand"] > 0,
-                "play_highest_nigiri": (next_state_dict["egg_nigiri_in_hand"] +
-                                        next_state_dict["salmon_nigiri_in_hand"] +
-                                        next_state_dict["squid_nigiri_in_hand"]) > 0,
-                "play_tempura": next_state_dict["tempura_in_hand"] > 0,
-                "play_sashimi": next_state_dict["sashimi_in_hand"] > 0,
-                "play_dumpling": next_state_dict["dumpling_in_hand"] > 0,
-                "play_pudding": next_state_dict["pudding_in_hand"] > 0,
-                "play_highest_maki": (next_state_dict["maki_1_in_hand"] +
-                                    next_state_dict["maki_2_in_hand"] +
-                                    next_state_dict["maki_3_in_hand"]) > 0,
-                "play_chopsticks": next_state_dict["chopsticks_in_hand"] > 0,
-            }
+            # Construct dictionary of possible actions from next state
+            next_actions_dict = build_actions_dict(next_state_dict)
 
             # --- SELF UPDATE ---
             if player.strategy == "q-learning" and player.agent is not None:
@@ -539,44 +507,11 @@ class SushiGo:
         
         elif strategy == "q-learning":
             
-            # Define current state dictionary
-            state_dict = {
-                "wasabi_in_hand": sum(1 for c in cards_in_hand if c.type == "wasabi"),
-                "egg_nigiri_in_hand": sum(1 for c in cards_in_hand if c.type == "nigiri" and c.subtype == 1),
-                "salmon_nigiri_in_hand": sum(1 for c in cards_in_hand if c.type == "nigiri" and c.subtype == 2),
-                "squid_nigiri_in_hand": sum(1 for c in cards_in_hand if c.type == "nigiri" and c.subtype == 3),
-                "tempura_in_hand": sum(1 for c in cards_in_hand if c.type == "tempura"),
-                "sashimi_in_hand": sum(1 for c in cards_in_hand if c.type == "sashimi"),
-                "dumpling_in_hand": sum(1 for c in cards_in_hand if c.type == "dumpling"),
-                "pudding_in_hand": sum(1 for c in cards_in_hand if c.type == "pudding"),
-                "maki_1_in_hand": sum(1 for c in cards_in_hand if c.type == "maki" and c.subtype == 1),
-                "maki_2_in_hand": sum(1 for c in cards_in_hand if c.type == "maki" and c.subtype == 2),
-                "maki_3_in_hand": sum(1 for c in cards_in_hand if c.type == "maki" and c.subtype == 3),
-                "chopsticks_in_hand": sum(1 for c in cards_in_hand if c.type == "chopsticks"),
-                "free_wasabi_on_table": count_free_wasabi(cards_on_table),
-                "free_tempura_on_table": sum(1 for c in cards_on_table if c.type == "tempura") % 2,
-                "free_sashimi_on_table": sum(1 for c in cards_on_table if c.type == "sashimi") % 3,
-                "dumpling_on_table": sum(1 for c in cards_on_table if c.type == "dumpling"),
-                "pudding_on_table": sum(1 for c in cards_on_table if c.type == "pudding"),
-                "maki_points_on_table": sum(c.subtype for c in cards_on_table if c.type == "maki"),
-                "cards_in_hand": len(cards_in_hand),
-            }
+            # Construct current state dictionary
+            state_dict = build_state_dict(cards_in_hand, cards_on_table)
 
-            # Which actions are possible
-            actions_dict = {
-                "play_wasabi": state_dict["wasabi_in_hand"] > 0,
-                "play_highest_nigiri": (state_dict["egg_nigiri_in_hand"] +
-                                        state_dict["salmon_nigiri_in_hand"] +
-                                        state_dict["squid_nigiri_in_hand"]) > 0,
-                "play_tempura": state_dict["tempura_in_hand"] > 0,
-                "play_sashimi": state_dict["sashimi_in_hand"] > 0,
-                "play_dumpling": state_dict["dumpling_in_hand"] > 0,
-                "play_pudding": state_dict["pudding_in_hand"] > 0,
-                "play_highest_maki": (state_dict["maki_1_in_hand"] +
-                                    state_dict["maki_2_in_hand"] +
-                                    state_dict["maki_3_in_hand"]) > 0,
-                "play_chopsticks": state_dict["chopsticks_in_hand"] > 0,
-            }
+            # Construct dictionary of possible actions
+            actions_dict = build_actions_dict(state_dict)
 
             # Call the player’s agent
             action = player.agent.step(state_dict, actions_dict)
@@ -657,3 +592,51 @@ def count_free_wasabi(cards_on_table):
 
     free_wasabi = pending_wasabi
     return free_wasabi
+
+def build_state_dict(cards_in_hand, cards_on_table):
+    """Given lists of Card objects for cards in hand and cards on table, return a state dictionary with 
+    counts of each card type/subtype."""
+
+    state_dict = {
+        "wasabi_in_hand": sum(1 for c in cards_in_hand if c.type == "wasabi"),
+        "egg_nigiri_in_hand": sum(1 for c in cards_in_hand if c.type == "nigiri" and c.subtype == 1),
+        "salmon_nigiri_in_hand": sum(1 for c in cards_in_hand if c.type == "nigiri" and c.subtype == 2),
+        "squid_nigiri_in_hand": sum(1 for c in cards_in_hand if c.type == "nigiri" and c.subtype == 3),
+        "tempura_in_hand": sum(1 for c in cards_in_hand if c.type == "tempura"),
+        "sashimi_in_hand": sum(1 for c in cards_in_hand if c.type == "sashimi"),
+        "dumpling_in_hand": sum(1 for c in cards_in_hand if c.type == "dumpling"),
+        "pudding_in_hand": sum(1 for c in cards_in_hand if c.type == "pudding"),
+        "maki_1_in_hand": sum(1 for c in cards_in_hand if c.type == "maki" and c.subtype == 1),
+        "maki_2_in_hand": sum(1 for c in cards_in_hand if c.type == "maki" and c.subtype == 2),
+        "maki_3_in_hand": sum(1 for c in cards_in_hand if c.type == "maki" and c.subtype == 3),
+        "chopsticks_in_hand": sum(1 for c in cards_in_hand if c.type == "chopsticks"),
+        "free_wasabi_on_table": count_free_wasabi(cards_on_table),
+        "free_tempura_on_table": sum(1 for c in cards_on_table if c.type == "tempura") % 2,
+        "free_sashimi_on_table": sum(1 for c in cards_on_table if c.type == "sashimi") % 3,
+        "dumpling_on_table": sum(1 for c in cards_on_table if c.type == "dumpling"),
+        "pudding_on_table": sum(1 for c in cards_on_table if c.type == "pudding"),
+        "maki_points_on_table": sum(c.subtype for c in cards_on_table if c.type == "maki"),
+        "cards_in_hand": len(cards_in_hand),
+    }
+
+    return state_dict
+
+def build_actions_dict(state_dict):
+    """Given a state dictionary, return a dictionary of possible actions (True/False)."""
+
+    actions_dict = {
+        "play_wasabi": state_dict["wasabi_in_hand"] > 0,
+        "play_highest_nigiri": (state_dict["egg_nigiri_in_hand"] +
+                                state_dict["salmon_nigiri_in_hand"] +
+                                state_dict["squid_nigiri_in_hand"]) > 0,
+        "play_tempura": state_dict["tempura_in_hand"] > 0,
+        "play_sashimi": state_dict["sashimi_in_hand"] > 0,
+        "play_dumpling": state_dict["dumpling_in_hand"] > 0,
+        "play_pudding": state_dict["pudding_in_hand"] > 0,
+        "play_highest_maki": (state_dict["maki_1_in_hand"] +
+                            state_dict["maki_2_in_hand"] +
+                            state_dict["maki_3_in_hand"]) > 0,
+        "play_chopsticks": state_dict["chopsticks_in_hand"] > 0,
+    }
+    
+    return actions_dict
