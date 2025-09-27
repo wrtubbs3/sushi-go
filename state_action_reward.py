@@ -30,7 +30,7 @@ state_rules = {
     "cards_in_hand": lambda hand, table: len(hand),
 }
 
-def state_vars():
+def states():
     """Return the list of all state feature keys."""
     return list(state_rules.keys())
 

@@ -3,6 +3,10 @@ import random
 import numpy as np
 import pandas as pd
 import pickle
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from collections import deque, namedtuple
 import state_action_reward as sar
 
 # Q-Learning Agent:
@@ -219,3 +223,209 @@ class QLearningAgent:
                   f" (games_trained={self.games_trained}, q_size={len(self.q)})")
         except FileNotFoundError:
             print(f"[WARN] No saved agent found at {filename} — starting fresh.")
+
+# -------------------------
+# Deep Q-Learning Agent
+# -------------------------
+
+class QNetwork(nn.Module):
+    def __init__(self, state_dim, action_dim, hidden=128):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(state_dim, hidden),
+            nn.ReLU(),
+            nn.Linear(hidden, hidden),
+            nn.ReLU(),
+            nn.Linear(hidden, hidden),
+            nn.ReLU(),
+            nn.Linear(hidden, action_dim)
+        )
+    def forward(self, x):
+        return self.net(x)
+
+Transition = namedtuple("Transition", ["state", "action", "reward", "next_state", "done"])
+
+class DeepQLearningAgent:
+    def __init__(self, state_dim=19, action_dim=8, gamma=0.99, lr=1e-3, epsilon=0.2, train=True, buffer_size=50000, 
+                 batch_size=64, target_update=1000):
+        """
+        Deep Q-Learning agent.
+        state_dim = length of state vector
+        action_dim = number of possible action types
+        """
+        self.gamma = gamma
+        self.epsilon = epsilon
+        self.train = train
+        self.batch_size = batch_size
+        self.target_update = target_update
+
+        # State space (from SAR helper)
+        if state_dim is None:
+            self.states = sar.states()
+            self.state_dim = len(self.states)
+        else:
+            self.state_dim = state_dim
+
+        # Action space (from SAR helper)
+        if action_dim is None:
+            self.actions = sar.actions()
+            self.action_dim = len(self.actions)
+        else:
+            self.action_dim = action_dim
+
+        # Replay buffer
+        self.memory = deque(maxlen=buffer_size)
+
+        # Networks
+        self.q_net = QNetwork(state_dim, self.action_dim)
+        self.target_net = QNetwork(state_dim, self.action_dim)
+        self.target_net.load_state_dict(self.q_net.state_dict())
+        self.target_net.eval()
+
+        self.optimizer = optim.Adam(self.q_net.parameters(), lr=lr)
+
+        # Training bookkeeping
+        self.steps_done = 0
+        self.games_trained = 0
+
+    # -------------------------
+    # State helpers
+    # -------------------------
+    def _state_to_vector(self, state_dict):
+        """Convert ordered state_dict to vector of counts (float32 tensor)."""
+        state_vec = np.array([
+            state_dict.get("wasabi_in_hand", 0),
+            state_dict.get("egg_nigiri_in_hand", 0),
+            state_dict.get("salmon_nigiri_in_hand", 0),
+            state_dict.get("squid_nigiri_in_hand", 0),
+            state_dict.get("tempura_in_hand", 0),
+            state_dict.get("sashimi_in_hand", 0),
+            state_dict.get("dumpling_in_hand", 0),
+            state_dict.get("pudding_in_hand", 0),
+            state_dict.get("maki_1_in_hand", 0),
+            state_dict.get("maki_2_in_hand", 0),
+            state_dict.get("maki_3_in_hand", 0),
+            state_dict.get("chopsticks_in_hand", 0),
+            state_dict.get("free_wasabi_on_table", 0),
+            state_dict.get("free_tempura_on_table", 0),
+            state_dict.get("free_sashimi_on_table", 0),
+            state_dict.get("dumpling_on_table", 0),
+            state_dict.get("pudding_on_table", 0),
+            state_dict.get("maki_points_on_table", 0),
+            state_dict.get("cards_in_hand", 0),
+        ], dtype=np.float32)
+        return torch.tensor(state_vec)
+
+    # -------------------------
+    # Action selection
+    # -------------------------
+    def step(self, state_dict, actions_dict):
+        """Epsilon-greedy selection with masking of invalid actions."""
+        state = self._state_to_vector(state_dict).unsqueeze(0)  # shape [1, state_dim]
+        valid_actions = [i for i, a in enumerate(self.actions) if actions_dict.get(a, False)]
+
+        if not valid_actions:
+            return random.choice(self.actions)
+
+        # Exploration
+        if self.train and random.random() < self.epsilon:
+            chosen_idx = random.choice(valid_actions)
+        else:
+            with torch.no_grad():
+                q_values = self.q_net(state).squeeze(0)  # shape [action_dim]
+                mask = torch.full_like(q_values, float("-inf"))
+                mask[valid_actions] = 0
+                chosen_idx = torch.argmax(q_values + mask).item()
+
+        self.prev_state = state
+        self.prev_action = chosen_idx
+        return self.actions[chosen_idx]
+
+    # -------------------------
+    # Store transition
+    # -------------------------
+    def update(self, reward, state_dict, actions_dict, done=False):
+        """Store transition and trigger learning."""
+        if not self.train:
+            return
+
+        next_state = self._state_to_vector(state_dict)
+        transition = Transition(self.prev_state.squeeze(0),
+                                self.prev_action,
+                                reward,
+                                next_state,
+                                done)
+        self.memory.append(transition)
+
+        self.steps_done += 1
+        if len(self.memory) >= self.batch_size:
+            self.learn()
+
+        # Target net update
+        if self.steps_done % self.target_update == 0:
+            self.target_net.load_state_dict(self.q_net.state_dict())
+
+    # -------------------------
+    # Training step
+    # -------------------------
+    def learn(self):
+        """Sample a minibatch and perform Bellman update."""
+        batch = random.sample(self.memory, self.batch_size)
+        batch = Transition(*zip(*batch))
+
+        states = torch.stack(batch.state)
+        actions = torch.tensor(batch.action).unsqueeze(1)
+        rewards = torch.tensor(batch.reward, dtype=torch.float32).unsqueeze(1)
+        next_states = torch.stack(batch.next_state)
+        dones = torch.tensor(batch.done, dtype=torch.float32).unsqueeze(1)
+
+        # Q(s,a)
+        q_values = self.q_net(states).gather(1, actions)
+
+        # Q_target(s,a)
+        with torch.no_grad():
+            max_next_q = self.target_net(next_states).max(1, keepdim=True)[0]
+            q_targets = rewards + self.gamma * (1 - dones) * max_next_q
+
+        loss = nn.MSELoss()(q_values, q_targets)
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
+    # -------------------------
+    # Save & Load
+    # -------------------------
+    def save(self, filename_base="dqn_agent"):
+        """Save model + optimizer state."""
+        if not self.train:
+            return
+
+        data = {
+            "model_state_dict": self.q_net.state_dict(),
+            "target_state_dict": self.target_net.state_dict(),
+            "optimizer_state_dict": self.optimizer.state_dict(),
+            "epsilon": self.epsilon,
+            "gamma": self.gamma,
+            "steps_done": self.steps_done,
+            "games_trained": self.games_trained,
+        }
+
+        torch.save(data, filename_base + ".pt")
+        print(f"[INFO] DQN agent saved to {filename_base}.pt "
+              f"(games_trained={self.games_trained}, steps_done={self.steps_done})")
+
+    def load(self, filename="dqn_agent.pt"):
+        """Load model + optimizer state."""
+        try:
+            data = torch.load(filename)
+            self.q_net.load_state_dict(data["model_state_dict"])
+            self.target_net.load_state_dict(data["target_state_dict"])
+            self.optimizer.load_state_dict(data["optimizer_state_dict"])
+            self.epsilon = data.get("epsilon", self.epsilon)
+            self.gamma = data.get("gamma", self.gamma)
+            self.steps_done = data.get("steps_done", 0)
+            self.games_trained = data.get("games_trained", 0)
+            print(f"[INFO] DQN agent loaded from {filename} "
+                  f"(games_trained={self.games_trained}, steps_done={self.steps_done})")
+        except FileNotFoundError:
+            print(f"[WARN] No saved DQN agent found at {filename} — starting fresh.")

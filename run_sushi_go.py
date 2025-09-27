@@ -12,19 +12,23 @@ import config
 # From 2-5 players allowed
 player_names = ['Al', 'Bob', 'Charlie', 'Doug']
 n_players = len(player_names)
-player_strategies = ['hierarchy', 'q-learning', 'q-learning', 'q-learning']
-player_qtables = [None, 'q_table_2_players.pkl', 'q_table_3_players.pkl', 'q_table_4_players.pkl']
+player_strategies = ['deep q-learning', 'hierarchy', 'hierarchy', 'hierarchy']
+player_qtables = [None, None, None, None]  # only used for q-learning
 
-# game = SushiGo(n_players, player_names, player_strategies)
+# Create game
 game = SushiGo(n_players, player_names, player_strategies, player_qtables=player_qtables)
 
-# Keep a reference to the Q-learning agent (if present)
-q_agent = None
+# Collect references to any trainable agents
+trainable_agents = []
 for p in game.players:
     if p.strategy == "q-learning":
-        q_agent = p.agent
-        q_agent.train = False
-        break
+        p.agent.train = False
+        if p.agent.train == True:
+            trainable_agents.append(p.agent)
+    elif p.strategy == "deep q-learning":
+        p.agent.train = True
+        if p.agent.train == True:
+            trainable_agents.append(p.agent)
 
 # Number of games to simulate
 n_games = config.params['iterations']
@@ -32,8 +36,9 @@ n_games = config.params['iterations']
 # Initialize game log for statistical tracking
 game_score_log = [[] for _ in range(n_players)]
 
-# Q-agent training file name (if applicable)
-q_table_filename = f"q_table"
+# Filenames for saving agents
+q_table_filename = "q_table"
+dqn_filename = "dqn_agent"
 
 # Simulate games
 for i in tqdm(range(n_games)):
@@ -42,25 +47,24 @@ for i in tqdm(range(n_games)):
     for j in range(n_players):
         game_score_log[j].append(game_score[j])
 
-    if q_agent:
-        q_agent.games_trained += 1
+    for agent in trainable_agents:
+        agent.games_trained += 1
 
-    # Periodically save Q-table if applicable
+    # Periodically save agents
     save_interval = config.params['save_every']
-    if q_agent and (i + 1) % save_interval == 0:
-        fname = q_table_filename
-        q_agent.save(fname)
+    if (i + 1) % save_interval == 0:
+        for agent in trainable_agents:
+            if agent.__class__.__name__ == "QLearningAgent":
+                agent.save(q_table_filename)
+            elif agent.__class__.__name__ == "DeepQLearningAgent":
+                agent.save(dqn_filename)
 
-# run = tournament(
-#         iterations = config.params['iterations'],
-#         algo       = config.params['algorithm'],
-#         comment    = config.params['logging'],
-#         agent_info = config.params['model']
-#                 )
-
-# Save final Q-table if applicable
-if q_agent:
-    q_agent.save(q_table_filename)
+# Save final versions
+for agent in trainable_agents:
+    if agent.__class__.__name__ == "QLearningAgent":
+        agent.save(q_table_filename)
+    elif agent.__class__.__name__ == "DeepQLearningAgent":
+        agent.save(dqn_filename)
 
 # Compute statistics for each player
 total_score = []
@@ -75,7 +79,7 @@ for i in range(n_players):
 for i in range(n_players):
     print(player_names[i], 'finished with', total_score[i], 'points using the', player_strategies[i], 'strategy.')
     # print('Game log: ', game_score_log[i])
-    print(player_names[i], 'finished with an average score of', avg_game_score[i], 'points using the', player_strategies[i], 'strategy.')    
+    print(player_names[i], 'finished with an average score of', avg_game_score[i], 'points using the', player_strategies[i], 'strategy.')
     print(player_names[i], 'finished with standard deviation of', stdev_game_score[i], 'points using the', player_strategies[i], 'strategy.')    
 
 # ---------------------------------------------------
@@ -111,17 +115,3 @@ plt.savefig(filename, dpi=300)
 plt.show()
 
 print(f"[INFO] Plot saved as {filename}")
-
-# # Determine which player(s) have the most points and print output
-# most_points = max(game_score)
-# winner_idx = [i for i in range(n_players) if (game_score[i] == most_points)]
-# n_winners = len(winner_idx)
-# if n_winners == 1:
-#     winner = player_names[winner_idx[0]]
-#     print(f"{winner} is the winner!")
-# else:
-#     winner_list = []
-#     print('There are multiple players who tied for the most points:')
-#     for i in range(n_winners):
-#         winner_list.append(player_names[winner_idx[i]])
-#         print(winner_list[i])

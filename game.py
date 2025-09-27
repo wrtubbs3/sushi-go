@@ -296,7 +296,7 @@ class SushiGo:
 
             # Build dictionary of possible actions from current state
             actions_dict = build_actions_dict(state_dict)
-            
+
             # --- SELECT CARD ---
             card_to_keep_idx = self.select_card(cards_in_hand[i], cards_on_table[i], player)
             card_to_keep = cards_in_hand[i].pop(card_to_keep_idx)
@@ -489,6 +489,23 @@ class SushiGo:
             card_to_keep_idx = 0
             for i, c in enumerate(cards_in_hand):
                 if action.endswith(c.type):  # match "play_tempura" to card.type == "tempura"
+                    card_to_keep_idx = i
+                    break
+
+        elif strategy == "deep q-learning":
+            # Construct current state dictionary
+            state_dict = build_state_dict(cards_in_hand, cards_on_table)
+
+            # Construct dictionary of possible actions
+            actions_dict = build_actions_dict(state_dict)
+
+            # Call the player’s DQN agent
+            action = player.agent.step(state_dict, actions_dict)
+
+            # Map chosen action back to card index
+            card_to_keep_idx = 0
+            for i, c in enumerate(cards_in_hand):
+                if action.endswith(c.type):  # e.g., "play_tempura" matches card.type == "tempura"
                     card_to_keep_idx = i
                     break
 
