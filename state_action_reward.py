@@ -2,65 +2,76 @@
 
 import pandas as pd
 import numpy as np
-import itertools
 
-def states():
-    """
-    Build all possible state combinations for Sushi Go based on card counts.
-    Each element in the state vector is an integer in the specified range.
-    """
+# -------------------------
+# States
+# -------------------------
 
-    # Define ranges for each component of the state vector
-    state_components = [
-        range(3),  # wasabi_in_hand (0-2)
-        range(3),  # egg_nigiri_in_hand (0-2)
-        range(3),  # salmon_nigiri_in_hand (0-2)
-        range(3),  # squid_nigiri_in_hand (0-2)
-        range(3),  # tempura_in_hand (0-2)
-        range(3),  # sashimi_in_hand (0-2)
-        range(3),  # dumpling_in_hand (0-2)
-        range(3),  # pudding_in_hand (0-2)
-        range(3),  # maki_1_in_hand (0-2)
-        range(3),  # maki_2_in_hand (0-2)
-        range(3),  # maki_3_in_hand (0-2)
-        range(3),  # chopsticks_in_hand (0-2)
-        range(3),  # free_wasabi_on_table (0-2)
-        range(2),  # free_tempura_on_table (0-1)
-        range(3),  # free_sashimi_on_table (0-2)
-        range(6),  # dumpling_on_table (0-5)
-        range(3),  # pudding_on_table (0-2)
-        range(7),  # maki_points_on_table (0-6)
-        range(11), # cards_in_hand (0-10)
-    ]
+def build_state_dict(cards_in_hand, cards_on_table):
+    """Given lists of Card objects for cards in hand and cards on table, return a state dictionary with 
+    counts of each card type/subtype."""
 
-    # # Temporary small state vector for prototyping
-    # state_components = [
-    #     range(3),  # wasabi_in_hand (0-2)
-    #     range(3),  # egg_nigiri_in_hand (0-2)
-    # ]
+    state_dict = {
+        "wasabi_in_hand": sum(1 for c in cards_in_hand if c.type == "wasabi"),
+        "egg_nigiri_in_hand": sum(1 for c in cards_in_hand if c.type == "nigiri" and c.subtype == 1),
+        "salmon_nigiri_in_hand": sum(1 for c in cards_in_hand if c.type == "nigiri" and c.subtype == 2),
+        "squid_nigiri_in_hand": sum(1 for c in cards_in_hand if c.type == "nigiri" and c.subtype == 3),
+        "tempura_in_hand": sum(1 for c in cards_in_hand if c.type == "tempura"),
+        "sashimi_in_hand": sum(1 for c in cards_in_hand if c.type == "sashimi"),
+        "dumpling_in_hand": sum(1 for c in cards_in_hand if c.type == "dumpling"),
+        "pudding_in_hand": sum(1 for c in cards_in_hand if c.type == "pudding"),
+        "maki_1_in_hand": sum(1 for c in cards_in_hand if c.type == "maki" and c.subtype == 1),
+        "maki_2_in_hand": sum(1 for c in cards_in_hand if c.type == "maki" and c.subtype == 2),
+        "maki_3_in_hand": sum(1 for c in cards_in_hand if c.type == "maki" and c.subtype == 3),
+        "chopsticks_in_hand": sum(1 for c in cards_in_hand if c.type == "chopsticks"),
+        "free_wasabi_on_table": count_free_wasabi(cards_on_table),
+        "free_tempura_on_table": sum(1 for c in cards_on_table if c.type == "tempura") % 2,
+        "free_sashimi_on_table": sum(1 for c in cards_on_table if c.type == "sashimi") % 3,
+        "dumpling_on_table": sum(1 for c in cards_on_table if c.type == "dumpling"),
+        "pudding_on_table": sum(1 for c in cards_on_table if c.type == "pudding"),
+        "maki_points_on_table": sum(c.subtype for c in cards_on_table if c.type == "maki"),
+        "cards_in_hand": len(cards_in_hand),
+    }
 
-    # Generate Cartesian product of all state components
-    states_all = list(itertools.product(*state_components))
+    return state_dict
 
-    return states_all
+# -------------------------
+# Actions
+# -------------------------
 
+# Map each action to a lambda that evaluates availability given a state_dict
+action_rules = {
+    "play_wasabi": lambda s: s["wasabi_in_hand"] > 0,
+    "play_highest_nigiri": lambda s: (
+        s["egg_nigiri_in_hand"] +
+        s["salmon_nigiri_in_hand"] +
+        s["squid_nigiri_in_hand"]
+    ) > 0,
+    "play_tempura": lambda s: s["tempura_in_hand"] > 0,
+    "play_sashimi": lambda s: s["sashimi_in_hand"] > 0,
+    "play_dumpling": lambda s: s["dumpling_in_hand"] > 0,
+    "play_pudding": lambda s: s["pudding_in_hand"] > 0,
+    "play_highest_maki": lambda s: (
+        s["maki_1_in_hand"] +
+        s["maki_2_in_hand"] +
+        s["maki_3_in_hand"]
+    ) > 0,
+    "play_chopsticks": lambda s: s["chopsticks_in_hand"] > 0,
+}
 
 def actions():
     """
-    Define the set of possible actions.
+    Define the set of possible actions (keys only).
     """
-    actions_all = [
-        "play_wasabi",
-        "play_highest_nigiri",
-        "play_tempura",
-        "play_sashimi",
-        "play_dumpling",
-        "play_pudding",
-        "play_highest_maki",
-        "play_chopsticks"
-    ]
-    return actions_all
+    return list(action_rules.keys())
 
+def build_actions_dict(state_dict):
+    """Given a state dictionary, return a dictionary of possible actions (True/False)."""
+    return {action: rule(state_dict) for action, rule in action_rules.items()}
+
+# -------------------------
+# Rewards
+# -------------------------
 
 def rewards(states, actions):
     """
@@ -73,3 +84,25 @@ def rewards(states, actions):
         index=states
     )
     return R
+
+# -------------------------
+# Miscellaneous
+# -------------------------
+
+def count_free_wasabi(cards_on_table):
+    """Return the number of wasabi cards on table that have not yet been paired with a nigiri."""
+
+    free_wasabi = 0
+    pending_wasabi = 0
+
+    for card in cards_on_table:
+        if card.type == "wasabi":
+            # new wasabi waiting for a nigiri
+            pending_wasabi += 1
+        elif card.type == "nigiri" and pending_wasabi > 0:
+            # first pending wasabi gets paired with this nigiri
+            pending_wasabi -= 1
+        # else: ignore (either nigiri without wasabi, or other card)
+
+    free_wasabi = pending_wasabi
+    return free_wasabi
