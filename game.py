@@ -353,7 +353,7 @@ class SushiGo:
             reward = new_points[i] - old_points[i]  # incremental reward
 
             # Construct next state dictionary
-            next_state_dict = build_state_dict(cards_in_hand, cards_on_table)
+            next_state_dict = build_state_dict(player.cards_in_hand, player.cards_on_table)
 
             # Construct dictionary of possible actions from next state
             next_actions_dict = build_actions_dict(next_state_dict)
