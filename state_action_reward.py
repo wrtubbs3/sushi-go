@@ -7,33 +7,36 @@ import numpy as np
 # States
 # -------------------------
 
+# --- State feature rules ---
+state_rules = {
+    "wasabi_in_hand": lambda hand, table: sum(1 for c in hand if c.type == "wasabi"),
+    "egg_nigiri_in_hand": lambda hand, table: sum(1 for c in hand if c.type == "nigiri" and c.subtype == 1),
+    "salmon_nigiri_in_hand": lambda hand, table: sum(1 for c in hand if c.type == "nigiri" and c.subtype == 2),
+    "squid_nigiri_in_hand": lambda hand, table: sum(1 for c in hand if c.type == "nigiri" and c.subtype == 3),
+    "tempura_in_hand": lambda hand, table: sum(1 for c in hand if c.type == "tempura"),
+    "sashimi_in_hand": lambda hand, table: sum(1 for c in hand if c.type == "sashimi"),
+    "dumpling_in_hand": lambda hand, table: sum(1 for c in hand if c.type == "dumpling"),
+    "pudding_in_hand": lambda hand, table: sum(1 for c in hand if c.type == "pudding"),
+    "maki_1_in_hand": lambda hand, table: sum(1 for c in hand if c.type == "maki" and c.subtype == 1),
+    "maki_2_in_hand": lambda hand, table: sum(1 for c in hand if c.type == "maki" and c.subtype == 2),
+    "maki_3_in_hand": lambda hand, table: sum(1 for c in hand if c.type == "maki" and c.subtype == 3),
+    "chopsticks_in_hand": lambda hand, table: sum(1 for c in hand if c.type == "chopsticks"),
+    "free_wasabi_on_table": lambda hand, table: count_free_wasabi(table),
+    "free_tempura_on_table": lambda hand, table: sum(1 for c in table if c.type == "tempura") % 2,
+    "free_sashimi_on_table": lambda hand, table: sum(1 for c in table if c.type == "sashimi") % 3,
+    "dumpling_on_table": lambda hand, table: sum(1 for c in table if c.type == "dumpling"),
+    "pudding_on_table": lambda hand, table: sum(1 for c in table if c.type == "pudding"),
+    "maki_points_on_table": lambda hand, table: sum(c.subtype for c in table if c.type == "maki"),
+    "cards_in_hand": lambda hand, table: len(hand),
+}
+
+def state_vars():
+    """Return the list of all state feature keys."""
+    return list(state_rules.keys())
+
 def build_state_dict(cards_in_hand, cards_on_table):
-    """Given lists of Card objects for cards in hand and cards on table, return a state dictionary with 
-    counts of each card type/subtype."""
-
-    state_dict = {
-        "wasabi_in_hand": sum(1 for c in cards_in_hand if c.type == "wasabi"),
-        "egg_nigiri_in_hand": sum(1 for c in cards_in_hand if c.type == "nigiri" and c.subtype == 1),
-        "salmon_nigiri_in_hand": sum(1 for c in cards_in_hand if c.type == "nigiri" and c.subtype == 2),
-        "squid_nigiri_in_hand": sum(1 for c in cards_in_hand if c.type == "nigiri" and c.subtype == 3),
-        "tempura_in_hand": sum(1 for c in cards_in_hand if c.type == "tempura"),
-        "sashimi_in_hand": sum(1 for c in cards_in_hand if c.type == "sashimi"),
-        "dumpling_in_hand": sum(1 for c in cards_in_hand if c.type == "dumpling"),
-        "pudding_in_hand": sum(1 for c in cards_in_hand if c.type == "pudding"),
-        "maki_1_in_hand": sum(1 for c in cards_in_hand if c.type == "maki" and c.subtype == 1),
-        "maki_2_in_hand": sum(1 for c in cards_in_hand if c.type == "maki" and c.subtype == 2),
-        "maki_3_in_hand": sum(1 for c in cards_in_hand if c.type == "maki" and c.subtype == 3),
-        "chopsticks_in_hand": sum(1 for c in cards_in_hand if c.type == "chopsticks"),
-        "free_wasabi_on_table": count_free_wasabi(cards_on_table),
-        "free_tempura_on_table": sum(1 for c in cards_on_table if c.type == "tempura") % 2,
-        "free_sashimi_on_table": sum(1 for c in cards_on_table if c.type == "sashimi") % 3,
-        "dumpling_on_table": sum(1 for c in cards_on_table if c.type == "dumpling"),
-        "pudding_on_table": sum(1 for c in cards_on_table if c.type == "pudding"),
-        "maki_points_on_table": sum(c.subtype for c in cards_on_table if c.type == "maki"),
-        "cards_in_hand": len(cards_in_hand),
-    }
-
-    return state_dict
+    """Compute state features using state_rules."""
+    return {key: rule(cards_in_hand, cards_on_table) for key, rule in state_rules.items()}
 
 # -------------------------
 # Actions
