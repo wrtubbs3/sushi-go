@@ -306,6 +306,8 @@ class SushiGo:
             chosen_action = None
             if player.strategy == "q-learning" and player.agent is not None:
                 chosen_action = player.agent.prev_action  # stored inside step()
+            elif player.strategy == "deep q-learning" and player.agent is not None:
+                chosen_action = player.agent.prev_action  # stored inside step()
             elif chosen_action is None:
                 # fallback: infer from card type
                 chosen_action = "play_" + card_to_keep.type
@@ -329,6 +331,8 @@ class SushiGo:
 
             # --- SELF UPDATE ---
             if player.strategy == "q-learning" and player.agent is not None:
+                player.agent.update(reward, next_state_dict, next_actions_dict)
+            elif player.strategy == "deep q-learning" and player.agent is not None:
                 player.agent.update(reward, next_state_dict, next_actions_dict)
 
             # --- OBSERVATION UPDATES ---

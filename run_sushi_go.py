@@ -12,8 +12,8 @@ import config
 # From 2-5 players allowed
 player_names = ['Al', 'Bob', 'Charlie', 'Doug']
 n_players = len(player_names)
-player_strategies = ['deep q-learning', 'hierarchy', 'hierarchy', 'hierarchy']
-player_qtables = [None, None, None, None]  # only used for q-learning
+player_strategies = ['deep q-learning', 'q-learning', 'hierarchy', 'hierarchy']
+player_qtables = [None, 'q_table_4_players.pkl', None, None]  # only used for q-learning
 
 # Create game
 game = SushiGo(n_players, player_names, player_strategies, player_qtables=player_qtables)
