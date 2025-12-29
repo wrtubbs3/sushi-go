@@ -13,7 +13,7 @@ class Player:
         self.name = name
 
         # Default strategy: random
-        if strategy not in ["random", "sequential", "user choice", "hierarchy", "q-learning", "deep-q-learning"]:
+        if strategy not in ["random", "sequential", "user choice", "hierarchy", "q-learning", "deep q-learning"]:
             self.strategy = "random"
         else:
             self.strategy = strategy

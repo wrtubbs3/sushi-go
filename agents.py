@@ -276,9 +276,9 @@ class DeepQLearningAgent:
         # Replay buffer
         self.memory = deque(maxlen=buffer_size)
 
-        # Networks
-        self.q_net = QNetwork(state_dim, self.action_dim)
-        self.target_net = QNetwork(state_dim, self.action_dim)
+        # Networks - use the computed self.state_dim (not the raw parameter)
+        self.q_net = QNetwork(self.state_dim, self.action_dim)
+        self.target_net = QNetwork(self.state_dim, self.action_dim)
         self.target_net.load_state_dict(self.q_net.state_dict())
         self.target_net.eval()
 
@@ -322,20 +322,21 @@ class DeepQLearningAgent:
     def step(self, state_dict, actions_dict):
         """Epsilon-greedy selection with masking of invalid actions."""
         state = self._state_to_vector(state_dict).unsqueeze(0)  # shape [1, state_dim]
-        valid_actions = [i for i, a in enumerate(self.actions) if actions_dict.get(a, False)]
+        valid_actions = [i for i, a in enumerate(actions_dict.keys()) if actions_dict.get(a, False)]
 
         if not valid_actions:
-            return random.choice(self.actions)
-
-        # Exploration
-        if self.train and random.random() < self.epsilon:
-            chosen_idx = random.choice(valid_actions)
+            # No valid actions: pick a random action index (but set prev_state/prev_action consistently)
+            chosen_idx = random.randrange(self.action_dim)
         else:
-            with torch.no_grad():
-                q_values = self.q_net(state).squeeze(0)  # shape [action_dim]
-                mask = torch.full_like(q_values, float("-inf"))
-                mask[valid_actions] = 0
-                chosen_idx = torch.argmax(q_values + mask).item()
+            # Exploration
+            if self.train and random.random() < self.epsilon:
+                chosen_idx = random.choice(valid_actions)
+            else:
+                with torch.no_grad():
+                    q_values = self.q_net(state).squeeze(0)  # shape [action_dim]
+                    mask = torch.full_like(q_values, float("-inf"))
+                    mask[valid_actions] = 0
+                    chosen_idx = torch.argmax(q_values + mask).item()
 
         self.prev_state = state
         self.prev_action = chosen_idx
@@ -373,14 +374,14 @@ class DeepQLearningAgent:
         batch = random.sample(self.memory, self.batch_size)
         batch = Transition(*zip(*batch))
 
-        states = torch.stack(batch.state)
-        actions = torch.tensor(batch.action).unsqueeze(1)
+        states = torch.stack(batch.state)                       # [batch, state_dim]
+        actions = torch.tensor(batch.action, dtype=torch.int64).unsqueeze(1)   # [batch, 1] (long)
         rewards = torch.tensor(batch.reward, dtype=torch.float32).unsqueeze(1)
         next_states = torch.stack(batch.next_state)
         dones = torch.tensor(batch.done, dtype=torch.float32).unsqueeze(1)
 
         # Q(s,a)
-        q_values = self.q_net(states).gather(1, actions)
+        q_values = self.q_net(states).gather(1, actions)  # [batch, 1]
 
         # Q_target(s,a)
         with torch.no_grad():
