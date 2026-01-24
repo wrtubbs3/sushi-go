@@ -434,9 +434,9 @@ class DeepQLearningAgent:
 
         self.optimizer.zero_grad()
         loss.backward()
-        avg_q = q_values.mean().item()
-        if self.steps_done % 100 == 0:
-            print(f"Step {self.steps_done}: Loss={loss.item():.4f}, TD Error={td_error:.4f}, Avg Q={avg_q:.4f}")
+        # avg_q = q_values.mean().item()
+        # if self.steps_done % 100 == 0:
+        #     print(f"Step {self.steps_done}: Loss={loss.item():.4f}, TD Error={td_error:.4f}, Avg Q={avg_q:.4f}")
 
         # gradient clipping to avoid exploding updates
         clip_grad_norm_(self.q_net.parameters(), max_norm=10.0)
