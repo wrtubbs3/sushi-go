@@ -8,6 +8,7 @@ import torch.nn as nn
 import torch.optim as optim
 from collections import deque, namedtuple
 import state_action_reward as sar
+from torch.nn.utils import clip_grad_norm_
 
 # Q-Learning Agent:
 # 
@@ -243,42 +244,59 @@ class QNetwork(nn.Module):
     def forward(self, x):
         return self.net(x)
 
+
 Transition = namedtuple("Transition", ["state", "action", "reward", "next_state", "done"])
 
+
 class DeepQLearningAgent:
-    def __init__(self, state_dim=19, action_dim=8, gamma=0.99, lr=1e-3, epsilon=0.2, train=True, buffer_size=50000, 
-                 batch_size=64, target_update=1000):
+    def __init__(self, state_dim=None, action_dim=None, gamma=0.99, lr=1e-4, epsilon=0.2, epsilon_decay = 0.999,
+                 epsilon_min = 0.01, train=True, buffer_size=50000, batch_size=64, target_update=5000, 
+                 min_replay_size=None, device=None):
         """
-        Deep Q-Learning agent.
-        state_dim = length of state vector
-        action_dim = number of possible action types
+        Deep Q-Learning agent with explicit, canonical action->index mapping to avoid
+        action-order mismatches between the network and environment.
+        - state_dim / action_dim: if None, derived from sar.states() and sar.actions().
+        - gamma: discount factor for future rewards
+        - lr: learning rate
+        - epsilon: exploration rate for epsilon-greedy action selection
+        - train: whether the agent is in training mode (enables exploration and learning)
+        - buffer_size: replay buffer size
+        - batch_size: minibatch size for learning
+        - target_update: how often (in steps) to update the target network
+        - min_replay_size: how many transitions before learning starts (defaults to max(1000, batch_size)).
+        - device: torch device to use (cpu by default).
         """
         self.gamma = gamma
         self.epsilon = epsilon
+        self.epsilon_decay = epsilon_decay
+        self.epsilon_min = epsilon_min
         self.train = train
         self.batch_size = batch_size
         self.target_update = target_update
+        self.device = torch.device(device) if device is not None else torch.device("cpu")
 
-        # State space (from SAR helper)
+        # State and action spaces (canonicalized)
         if state_dim is None:
             self.states = sar.states()
             self.state_dim = len(self.states)
         else:
             self.state_dim = state_dim
 
-        # Action space (from SAR helper)
-        if action_dim is None:
-            self.actions = sar.actions()
-            self.action_dim = len(self.actions)
-        else:
-            self.action_dim = action_dim
+        # canonical action list
+        self.actions = sar.actions()
+        self.action_dim = len(self.actions) if action_dim is None else action_dim
+
+        # mapping action_name -> index and index -> action_name
+        self.action_to_index = {a: i for i, a in enumerate(self.actions)}
+        self.index_to_action = {i: a for i, a in enumerate(self.actions)}
 
         # Replay buffer
         self.memory = deque(maxlen=buffer_size)
+        self.min_replay_size = min_replay_size if min_replay_size is not None else max(1000, batch_size)
 
-        # Networks - use the computed self.state_dim (not the raw parameter)
-        self.q_net = QNetwork(self.state_dim, self.action_dim)
-        self.target_net = QNetwork(self.state_dim, self.action_dim)
+        # Networks
+        self.q_net = QNetwork(self.state_dim, self.action_dim).to(self.device)
+        self.target_net = QNetwork(self.state_dim, self.action_dim).to(self.device)
         self.target_net.load_state_dict(self.q_net.state_dict())
         self.target_net.eval()
 
@@ -314,18 +332,23 @@ class DeepQLearningAgent:
             state_dict.get("maki_points_on_table", 0),
             state_dict.get("cards_in_hand", 0),
         ], dtype=np.float32)
-        return torch.tensor(state_vec)
+        return torch.tensor(state_vec, dtype=torch.float32, device=self.device)
 
     # -------------------------
     # Action selection
     # -------------------------
     def step(self, state_dict, actions_dict):
-        """Epsilon-greedy selection with masking of invalid actions."""
+        """Epsilon-greedy selection with masking of invalid actions.
+        actions_dict: mapping action_name -> boolean (available)
+        Returns action_name (string) consistent with self.actions list.
+        """
         state = self._state_to_vector(state_dict).unsqueeze(0)  # shape [1, state_dim]
-        valid_actions = [i for i, a in enumerate(actions_dict.keys()) if actions_dict.get(a, False)]
 
+        # Build list of valid action indices using the canonical mapping.
+        valid_actions = [self.action_to_index[a] for a, ok in actions_dict.items() if ok and a in self.action_to_index]
+
+        # If no valid actions
         if not valid_actions:
-            # No valid actions: pick a random action index (but set prev_state/prev_action consistently)
             chosen_idx = random.randrange(self.action_dim)
         else:
             # Exploration
@@ -334,35 +357,47 @@ class DeepQLearningAgent:
             else:
                 with torch.no_grad():
                     q_values = self.q_net(state).squeeze(0)  # shape [action_dim]
+                    # mask out invalid action indices by setting them to -inf so argmax never picks them
                     mask = torch.full_like(q_values, float("-inf"))
-                    mask[valid_actions] = 0
+                    mask[valid_actions] = 0.0
                     chosen_idx = torch.argmax(q_values + mask).item()
 
-        self.prev_state = state
-        self.prev_action = chosen_idx
-        return self.actions[chosen_idx]
+        # Decay epsilon
+        self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
+
+        # Store last state/action for the environment -> update call
+        # keep the state tensor (not moved to numpy) so transitions can be stacked later
+        self.prev_state = state.detach()  # shape [1, state_dim]
+        self.prev_action = int(chosen_idx)
+        return self.index_to_action[chosen_idx]
 
     # -------------------------
     # Store transition
     # -------------------------
     def update(self, reward, state_dict, actions_dict, done=False):
-        """Store transition and trigger learning."""
+        """Store transition and trigger learning. Intended to be called after environment step."""
         if not self.train:
             return
 
         next_state = self._state_to_vector(state_dict)
-        transition = Transition(self.prev_state.squeeze(0),
+        # prev_state stored as [1, state_dim]; squeeze to [state_dim] to make stacking easier
+        if self.prev_state is None or self.prev_action is None:
+            # if no previous stored state/action, skip (happens at beginning)
+            return
+
+        transition = Transition(self.prev_state.squeeze(0).cpu(),  # store on cpu to reduce GPU memory pressure
                                 self.prev_action,
-                                reward,
-                                next_state,
-                                done)
+                                float(reward),
+                                next_state.cpu(),
+                                bool(done))
         self.memory.append(transition)
 
         self.steps_done += 1
-        if len(self.memory) >= self.batch_size:
+        # Only learn after we have a reasonable buffer size (avoid overfitting to tiny buffer)
+        if len(self.memory) >= max(self.batch_size, self.min_replay_size):
             self.learn()
 
-        # Target net update
+        # Target net hard update on schedule
         if self.steps_done % self.target_update == 0:
             self.target_net.load_state_dict(self.q_net.state_dict())
 
@@ -370,27 +405,41 @@ class DeepQLearningAgent:
     # Training step
     # -------------------------
     def learn(self):
-        """Sample a minibatch and perform Bellman update."""
+        """Sample a minibatch and perform Bellman update (uses Huber loss and gradient clipping)."""
+        # Sample
         batch = random.sample(self.memory, self.batch_size)
         batch = Transition(*zip(*batch))
 
-        states = torch.stack(batch.state)                       # [batch, state_dim]
-        actions = torch.tensor(batch.action, dtype=torch.int64).unsqueeze(1)   # [batch, 1] (long)
-        rewards = torch.tensor(batch.reward, dtype=torch.float32).unsqueeze(1)
-        next_states = torch.stack(batch.next_state)
-        dones = torch.tensor(batch.done, dtype=torch.float32).unsqueeze(1)
+        # Convert to tensors on device
+        states = torch.stack(batch.state).to(self.device)                       # [batch, state_dim]
+        actions = torch.tensor(batch.action, dtype=torch.int64, device=self.device).unsqueeze(1)   # [batch, 1]
+        rewards = torch.tensor(batch.reward, dtype=torch.float32, device=self.device).unsqueeze(1)
+        next_states = torch.stack(batch.next_state).to(self.device)
+        dones = torch.tensor([1.0 if d else 0.0 for d in batch.done], dtype=torch.float32, device=self.device).unsqueeze(1)
 
-        # Q(s,a)
+        # Q(s,a) for taken actions
         q_values = self.q_net(states).gather(1, actions)  # [batch, 1]
 
-        # Q_target(s,a)
+        # Targets computed with target network (detached)
         with torch.no_grad():
             max_next_q = self.target_net(next_states).max(1, keepdim=True)[0]
-            q_targets = rewards + self.gamma * (1 - dones) * max_next_q
+            q_targets = rewards + self.gamma * (1.0 - dones) * max_next_q
 
-        loss = nn.MSELoss()(q_values, q_targets)
+        # Use Huber (SmoothL1) loss for robustness to outliers
+        loss = nn.SmoothL1Loss()(q_values, q_targets)
+
+        # # TROUBLESHOOTING
+        # td_error = (q_values - q_targets).abs().mean().item()
+        # print(f"[DEBUG] DQN learning step: loss={loss.item():.4f}, td_error={td_error:.4f}")
+
         self.optimizer.zero_grad()
         loss.backward()
+        avg_q = q_values.mean().item()
+        if self.steps_done % 100 == 0:
+            print(f"Step {self.steps_done}: Loss={loss.item():.4f}, TD Error={td_error:.4f}, Avg Q={avg_q:.4f}")
+
+        # gradient clipping to avoid exploding updates
+        clip_grad_norm_(self.q_net.parameters(), max_norm=10.0)
         self.optimizer.step()
 
     # -------------------------
@@ -403,30 +452,40 @@ class DeepQLearningAgent:
 
         data = {
             "model_state_dict": self.q_net.state_dict(),
-            "target_state_dict": self.target_net.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
-            "epsilon": self.epsilon,
-            "gamma": self.gamma,
             "steps_done": self.steps_done,
             "games_trained": self.games_trained,
+            "epsilon": self.epsilon,
+            # action mapping included so loading later preserves canonical order
+            "actions": self.actions
         }
+        with open(filename_base + ".pkl", "wb") as f:
+            pickle.dump(data, f)
 
-        torch.save(data, filename_base + ".pt")
-        print(f"[INFO] DQN agent saved to {filename_base}.pt "
-              f"(games_trained={self.games_trained}, steps_done={self.steps_done})")
+        print(f"[INFO] Deep Q agent saved to {filename_base}.pkl (steps={self.steps_done})")
 
-    def load(self, filename="dqn_agent.pt"):
-        """Load model + optimizer state."""
+    def load(self, filename="dqn_agent"):
+        """Load model + optimizer state if file exists."""
         try:
-            data = torch.load(filename)
-            self.q_net.load_state_dict(data["model_state_dict"])
-            self.target_net.load_state_dict(data["target_state_dict"])
-            self.optimizer.load_state_dict(data["optimizer_state_dict"])
+            with open(filename + ".pkl", "rb") as f:
+                data = pickle.load(f)
+            self.q_net.load_state_dict(data.get("model_state_dict", {}))
+            opt_state = data.get("optimizer_state_dict", None)
+            if opt_state is not None:
+                try:
+                    self.optimizer.load_state_dict(opt_state)
+                except Exception:
+                    # optimizer load can fail if device or pytorch versions differ; ignore safely
+                    pass
+            self.steps_done = data.get("steps_done", self.steps_done)
+            self.games_trained = data.get("games_trained", self.games_trained)
             self.epsilon = data.get("epsilon", self.epsilon)
-            self.gamma = data.get("gamma", self.gamma)
-            self.steps_done = data.get("steps_done", 0)
-            self.games_trained = data.get("games_trained", 0)
-            print(f"[INFO] DQN agent loaded from {filename} "
-                  f"(games_trained={self.games_trained}, steps_done={self.steps_done})")
+            saved_actions = data.get("actions", None)
+            if saved_actions:
+                # if saved action ordering differs, rebuild mappings but prefer the saved order
+                self.actions = saved_actions
+                self.action_to_index = {a: i for i, a in enumerate(self.actions)}
+                self.index_to_action = {i: a for i, a in enumerate(self.actions)}
+            print(f"[INFO] DQN agent loaded from {filename}.pkl (steps_done={self.steps_done})")
         except FileNotFoundError:
-            print(f"[WARN] No saved DQN agent found at {filename} — starting fresh.")
+            print(f"[WARN] No saved DQN agent found at {filename}.pkl — starting fresh.")

@@ -1,5 +1,5 @@
 params = {
-    "iterations": int(1e6),
+    "iterations": int(5*1e2),
     "save_every": int(1e4),  # how often to save Q-table
     "winner_bonus": 10,     # flat reward to winners
     "alpha_obs_factor": 0.2,  # observation learning factor
