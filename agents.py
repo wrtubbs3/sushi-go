@@ -250,7 +250,7 @@ Transition = namedtuple("Transition", ["state", "action", "reward", "next_state"
 
 class DeepQLearningAgent:
     def __init__(self, state_dim=None, action_dim=None, gamma=0.99, lr=1e-4, epsilon=0.2, epsilon_decay = 0.999,
-                 epsilon_min = 0.01, train=True, buffer_size=50000, batch_size=64, target_update=5000, 
+                 epsilon_min = 0.05, train=True, buffer_size=50000, batch_size=64, target_update=5000, 
                  min_replay_size=None, device=None):
         """
         Deep Q-Learning agent with explicit, canonical action->index mapping to avoid
