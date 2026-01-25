@@ -273,7 +273,8 @@ class DeepQLearningAgent:
         self.train = train
         self.batch_size = batch_size
         self.target_update = target_update
-        self.device = torch.device(device) if device is not None else torch.device("cpu")
+        self.device = torch.device(device if device is not None else ("cuda" if torch.cuda.is_available() else "cpu"))
+        print(f"[INFO] Using device: {self.device}")
 
         # State and action spaces (canonicalized)
         if state_dim is None:
