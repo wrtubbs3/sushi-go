@@ -126,7 +126,7 @@ class QLearningAgent:
     # -------------------------
     # Q-learning update
     # -------------------------
-    def update(self, reward, state_dict, actions_dict):
+    def update(self, reward, state_dict, actions_dict, done=False):
         """
         Perform Q-learning update after observing a transition.
         """
