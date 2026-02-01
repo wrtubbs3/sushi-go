@@ -108,7 +108,8 @@ class SushiGo:
                 player.agent.update(
                     reward=final_reward,
                     state_dict=next_state_dict,
-                    actions_dict=next_actions_dict
+                    actions_dict=next_actions_dict,
+                    done=True
                 )
 
                 # Observational updates for other Q-learning players
