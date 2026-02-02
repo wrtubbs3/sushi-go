@@ -339,15 +339,24 @@ class SushiGo:
             # --- OBSERVATION UPDATES ---
             if chosen_action is not None:
                 for other_player in players:
-                    if other_player is not player and other_player.strategy == "q-learning" and other_player.agent is not None:
-                        other_player.agent.update_from_observation(
-                            state_dict=state_dict,
-                            action=chosen_action,
-                            reward=reward,
-                            next_state_dict=next_state_dict,
-                            next_actions_dict=next_actions_dict,
-                            alpha_obs=other_player.agent.alpha * 0.2  # smaller learning rate for observers
-                        )
+                    if other_player is not player and other_player.agent is not None:
+                        if other_player.strategy == "q-learning":
+                            other_player.agent.update_from_observation(
+                                state_dict=state_dict,
+                                action=chosen_action,
+                                reward=reward,
+                                next_state_dict=next_state_dict,
+                                next_actions_dict=next_actions_dict,
+                                alpha_obs=other_player.agent.alpha * 0.2  # smaller learning rate for observers
+                            )
+                        elif other_player.strategy == "deep q-learning":
+                            other_player.agent.update_from_observation(
+                                state_dict=state_dict,
+                                action=chosen_action,
+                                reward=reward,
+                                next_state_dict=next_state_dict,
+                                next_actions_dict=next_actions_dict
+                            )
 
             # Track remaining cards to pass left
             cards_passed_left.append(cards_in_hand[i])

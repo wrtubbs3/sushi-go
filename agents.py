@@ -375,6 +375,7 @@ class DeepQLearningAgent:
     # -------------------------
     # Store transition
     # -------------------------
+
     def update(self, reward, state_dict, actions_dict, done=False):
         """Store transition and trigger learning. Intended to be called after environment step."""
         if not self.train:
@@ -401,6 +402,50 @@ class DeepQLearningAgent:
         # Target net hard update on schedule
         if self.steps_done % self.target_update == 0:
             self.target_net.load_state_dict(self.q_net.state_dict())
+
+    def update_from_observation(self, state_dict, action, reward, next_state_dict, next_actions_dict):
+        """
+        Allow the Deep Q agent to learn from observing other players' transitions.
+
+        This stores an observed transition in the replay buffer with a scaled reward
+        so observational updates have smaller effect (similar in spirit to the tabular
+        agent's smaller learning rate for observations).
+
+        Parameters:
+        - state_dict: observed state (before the other player's action)
+        - action: observed action name (string) or None for terminal observation
+        - reward: observed reward (float)
+        - next_state_dict: observed next state
+        - next_actions_dict: observed valid actions in next state (dict action->bool)
+        """
+        if not self.train:
+            return
+
+        # If no action provided (terminal observation), skip: the terminal full-update should already be applied
+        if action is None:
+            return
+
+        # Ensure action exists in canonical mapping
+        if action not in self.action_to_index:
+            # unknown action (shouldn't happen) — skip
+            return
+
+        # Prepare tensors (store on CPU like normal transitions)
+        state = self._state_to_vector(state_dict).cpu()       # shape [state_dim]
+        next_state = self._state_to_vector(next_state_dict).cpu()
+
+        action_idx = self.action_to_index[action]
+
+        # determine done from next_actions_dict: if no valid actions, treat as terminal
+        done = not any(next_actions_dict.values()) if next_actions_dict is not None else False
+
+        # Append an observed transition to replay buffer
+        transition = Transition(state, action_idx, reward, next_state, bool(done))
+        self.memory.append(transition)
+
+        # Only learn after we have a reasonable buffer size (avoid overfitting to tiny buffer)
+        if len(self.memory) >= max(self.batch_size, self.min_replay_size):
+            self.learn()
 
     # -------------------------
     # Training step
