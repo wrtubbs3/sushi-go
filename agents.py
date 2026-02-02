@@ -1,4 +1,7 @@
 # agents.py
+import os
+import csv
+import time
 import random
 import numpy as np
 import pandas as pd
@@ -303,6 +306,28 @@ class DeepQLearningAgent:
 
         self.optimizer = optim.Adam(self.q_net.parameters(), lr=lr)
 
+        # Training stats logging
+        self.stats_file = "dqn_stats.csv"   # set to None to disable logging
+        # create header if needed
+        if self.stats_file is not None and not os.path.exists(self.stats_file):
+            try:
+                with open(self.stats_file, "w", newline="") as f:
+                    writer = csv.writer(f)
+                    writer.writerow([
+                        "timestamp",
+                        "steps_done",
+                        "games_trained",
+                        "loss",
+                        "td_error",
+                        "avg_q",
+                        "epsilon",
+                        "replay_size",
+                        "batch_size",
+                        "grad_norm"
+                    ])
+            except Exception as e:
+                print(f"[WARN] Could not create stats file {self.stats_file}: {e}")
+
         # Training bookkeeping
         self.steps_done = 0
         self.games_trained = 0
@@ -474,20 +499,51 @@ class DeepQLearningAgent:
         # Use Huber (SmoothL1) loss for robustness to outliers
         loss = nn.SmoothL1Loss()(q_values, q_targets)
 
-        # # TROUBLESHOOTING
-        # td_error = (q_values - q_targets).abs().mean().item()
-        # print(f"[DEBUG] DQN learning step: loss={loss.item():.4f}, td_error={td_error:.4f}")
+        # Compute TD error (mean absolute) for diagnostics
+        with torch.no_grad():
+            td_error = (q_values - q_targets).abs().mean().item()
 
         self.optimizer.zero_grad()
         loss.backward()
-        # avg_q = q_values.mean().item()
-        # if self.steps_done % 100 == 0:
-        #     print(f"Step {self.steps_done}: Loss={loss.item():.4f}, TD Error={td_error:.4f}, Avg Q={avg_q:.4f}")
+
+        # Compute gradient norm (L2) before clipping for diagnostics
+        total_norm = 0.0
+        for p in self.q_net.parameters():
+            if p.grad is not None:
+                param_norm = p.grad.data.norm(2)
+                total_norm += (param_norm.item() ** 2)
+        grad_norm = total_norm ** 0.5 if total_norm > 0.0 else 0.0
 
         # gradient clipping to avoid exploding updates
         clip_grad_norm_(self.q_net.parameters(), max_norm=10.0)
         self.optimizer.step()
 
+        # Optional diagnostics logging to CSV
+        if getattr(self, "stats_file", None):
+            try:
+                # compute avg q for batch for logging
+                avg_q = q_values.mean().item()
+                replay_size = len(self.memory)
+                batch_size = self.batch_size
+                row = [
+                    int(time.time()),
+                    int(self.steps_done),
+                    int(self.games_trained),  # note: run_sushi_go increments this outside play loop
+                    float(loss.item()),
+                    float(td_error),
+                    float(avg_q),
+                    float(self.epsilon),
+                    int(replay_size),
+                    int(batch_size),
+                    float(grad_norm),
+                ]
+                with open(self.stats_file, "a", newline="") as f:
+                    writer = csv.writer(f)
+                    writer.writerow(row)
+            except Exception as e:
+                # don't crash training on logging failure
+                print(f"[WARN] Failed to write DQN stats: {e}")
+    
     # -------------------------
     # Save & Load
     # -------------------------

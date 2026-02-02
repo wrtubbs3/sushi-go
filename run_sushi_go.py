@@ -4,6 +4,7 @@
 import datetime
 import statistics
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from game import SushiGo
@@ -12,7 +13,8 @@ import config
 # From 2-5 players allowed
 player_names = ['Al', 'Bob', 'Charlie', 'Doug']
 n_players = len(player_names)
-player_strategies = ['deep q-learning', 'q-learning', 'hierarchy', 'hierarchy']
+player_strategies = ['deep q-learning', 'q-learning', 'hierarchy', 'random']
+# player_qtables = ['dqn_agent.pkl', 'q_table_4_players.pkl', None, None]  # only used for q-learning
 player_qtables = [None, 'q_table_4_players.pkl', None, None]  # only used for q-learning
 
 # Create game
@@ -83,7 +85,7 @@ for i in range(n_players):
     print(player_names[i], 'finished with standard deviation of', stdev_game_score[i], 'points using the', player_strategies[i], 'strategy.')    
 
 # ---------------------------------------------------
-# Plotting raw and smoothed scores
+# Plot raw and smoothed scores
 # ---------------------------------------------------
 
 plt.figure(figsize=(12, 6))
@@ -115,3 +117,27 @@ plt.savefig(filename, dpi=300)
 plt.show()
 
 print(f"[INFO] Plot saved as {filename}")
+
+# ---------------------------------------------------
+# Plot training diagnostics
+# ---------------------------------------------------
+
+try:
+    df = pd.read_csv("dqn_stats.csv")
+    # convert timestamp to datetime if desired
+    df['ts'] = pd.to_datetime(df['timestamp'], unit='s')
+    # Example plots:
+    fig, axs = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
+    axs[0].plot(df['steps_done'], df['loss'], label='loss')
+    axs[0].legend()
+    axs[1].plot(df['steps_done'], df['td_error'], label='td_error')
+    axs[1].legend()
+    axs[2].plot(df['steps_done'], df['avg_q'], label='avg_q')
+    axs[2].legend()
+    axs[2].set_xlabel("steps_done")
+    plt.tight_layout()
+    plt.show()
+except FileNotFoundError:
+    print("[INFO] No dqn_stats.csv found to plot diagnostics.")
+except Exception as e:
+    print(f"[WARN] Could not plot diagnostics: {e}")
