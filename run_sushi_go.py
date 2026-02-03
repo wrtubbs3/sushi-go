@@ -117,27 +117,3 @@ plt.savefig(filename, dpi=300)
 plt.show()
 
 print(f"[INFO] Plot saved as {filename}")
-
-# ---------------------------------------------------
-# Plot training diagnostics
-# ---------------------------------------------------
-
-try:
-    df = pd.read_csv("dqn_stats.csv")
-    # convert timestamp to datetime if desired
-    df['ts'] = pd.to_datetime(df['timestamp'], unit='s')
-    # Example plots:
-    fig, axs = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
-    axs[0].plot(df['steps_done'], df['loss'], label='loss')
-    axs[0].legend()
-    axs[1].plot(df['steps_done'], df['td_error'], label='td_error')
-    axs[1].legend()
-    axs[2].plot(df['steps_done'], df['avg_q'], label='avg_q')
-    axs[2].legend()
-    axs[2].set_xlabel("steps_done")
-    plt.tight_layout()
-    plt.show()
-except FileNotFoundError:
-    print("[INFO] No dqn_stats.csv found to plot diagnostics.")
-except Exception as e:
-    print(f"[WARN] Could not plot diagnostics: {e}")

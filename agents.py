@@ -503,6 +503,18 @@ class DeepQLearningAgent:
         with torch.no_grad():
             td_error = (q_values - q_targets).abs().mean().item()
 
+        # Batch diagnostics
+        with torch.no_grad():
+            rewards_tensor = rewards  # [batch,1]
+            batch_reward_mean = float(rewards_tensor.mean().item())
+            batch_reward_max = float(rewards_tensor.max().item())
+            n_terminals = int(dones.sum().item())
+            # stats of the next-state target Q (before any update)
+            max_next_q_stat = float(max_next_q.mean().item()) if 'max_next_q' in locals() else float(self.target_net(next_states).max(1, keepdim=True)[0].mean().item())
+            q_targets_mean = float(q_targets.mean().item())
+            # detect whether a hard target update just happened (useful for spike correlation)
+            is_target_update = bool(self.target_update and (self.steps_done % self.target_update == 0))
+
         self.optimizer.zero_grad()
         loss.backward()
 
@@ -528,7 +540,7 @@ class DeepQLearningAgent:
                 row = [
                     int(time.time()),
                     int(self.steps_done),
-                    int(self.games_trained),  # note: run_sushi_go increments this outside play loop
+                    int(self.games_trained),
                     float(loss.item()),
                     float(td_error),
                     float(avg_q),
@@ -536,6 +548,12 @@ class DeepQLearningAgent:
                     int(replay_size),
                     int(batch_size),
                     float(grad_norm),
+                    float(batch_reward_mean),
+                    float(batch_reward_max),
+                    int(n_terminals),
+                    float(max_next_q_stat),
+                    float(q_targets_mean),
+                    int(is_target_update)
                 ]
                 with open(self.stats_file, "a", newline="") as f:
                     writer = csv.writer(f)
