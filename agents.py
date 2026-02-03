@@ -13,6 +13,9 @@ from collections import deque, namedtuple
 import state_action_reward as sar
 from torch.nn.utils import clip_grad_norm_
 
+# Module-level flag to ensure diagnostic stats file is only created once per process
+STATS_FILE_INITIALIZED = False
+
 # Q-Learning Agent:
 # 
 # q(s,a) = q(s,a) + alpha*(r + q(s_hat, a_hat) - q(s,a))
@@ -306,27 +309,53 @@ class DeepQLearningAgent:
 
         self.optimizer = optim.Adam(self.q_net.parameters(), lr=lr)
 
-        # Training stats logging
-        self.stats_file = "dqn_stats.csv"   # set to None to disable logging
-        # create header if needed
-        if self.stats_file is not None and not os.path.exists(self.stats_file):
+        # Training stats logging (start fresh each run)
+        # set to None to disable logging
+        self.stats_file = "dqn_stats.csv"
+
+        # canonical list of CSV columns we will always use
+        self.stats_fields = [
+            "timestamp",
+            "steps_done",
+            "games_trained",
+            "loss",
+            "td_error",
+            "avg_q",
+            "epsilon",
+            "replay_size",
+            "batch_size",
+            "grad_norm",
+            "batch_reward_mean",
+            "batch_reward_max",
+            "n_terminals",
+            "max_next_q",
+            "q_targets_mean",
+            "is_target_update"
+        ]
+
+        # Remove any existing stats file once and create a fresh file with header.
+        # Use a module-level flag so multiple agent instances in the same process don't
+        # repeatedly delete/create the file.
+        global STATS_FILE_INITIALIZED
+        if self.stats_file and not STATS_FILE_INITIALIZED:
             try:
-                with open(self.stats_file, "w", newline="") as f:
+                # delete old file if present (start fresh)
+                if os.path.exists(self.stats_file):
+                    try:
+                        os.remove(self.stats_file)
+                        print(f"[INFO] Removed existing stats file {self.stats_file} to start fresh.")
+                    except Exception as e:
+                        print(f"[WARN] Could not remove existing stats file {self.stats_file}: {e}")
+
+                # create fresh file with canonical header
+                with open(self.stats_file, "w", newline="", encoding="utf-8") as f:
                     writer = csv.writer(f)
-                    writer.writerow([
-                        "timestamp",
-                        "steps_done",
-                        "games_trained",
-                        "loss",
-                        "td_error",
-                        "avg_q",
-                        "epsilon",
-                        "replay_size",
-                        "batch_size",
-                        "grad_norm"
-                    ])
+                    writer.writerow(self.stats_fields)
+
+                STATS_FILE_INITIALIZED = True
+                print(f"[INFO] Created new stats file {self.stats_file}")
             except Exception as e:
-                print(f"[WARN] Could not create stats file {self.stats_file}: {e}")
+                print(f"[WARN] Failed to initialize stats file {self.stats_file}: {e}")
 
         # Training bookkeeping
         self.steps_done = 0
@@ -561,6 +590,17 @@ class DeepQLearningAgent:
             except Exception as e:
                 # don't crash training on logging failure
                 print(f"[WARN] Failed to write DQN stats: {e}")
+
+        
+
+
+
+
+
+
+
+
+        
     
     # -------------------------
     # Save & Load
