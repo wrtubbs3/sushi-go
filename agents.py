@@ -330,7 +330,9 @@ class DeepQLearningAgent:
             "n_terminals",
             "max_next_q",
             "q_targets_mean",
-            "is_target_update"
+            "is_target_update",
+            "batch_reward_std",
+            "batch_reward_95"
         ]
 
         # Remove any existing stats file once and create a fresh file with header.
@@ -594,7 +596,7 @@ class DeepQLearningAgent:
             except Exception as e:
                 # don't crash training on logging failure
                 print(f"[WARN] Failed to write DQN stats: {e}")
-    
+
     # -------------------------
     # Save & Load
     # -------------------------

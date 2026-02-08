@@ -57,7 +57,7 @@ def rolling_or_raw(series, window):
         return series.rolling(window=window, min_periods=1).mean()
     return series
 
-def plot_diagnostics(df, window=1, savepath=None, show=True):
+def plot_diagnostics(df, window=1, show=True):
     print("[INFO] Starting plot generation...")
     style = choose_style()
     if style:
@@ -154,17 +154,17 @@ def plot_diagnostics(df, window=1, savepath=None, show=True):
 
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
-    if savepath:
-        # Add timestamp to filename
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename1 = f"dqn_stats_1_{timestamp}.png"
-        filename2 = f"dqn_stats_2_{timestamp}.png"
-        print(f"[INFO] Saving figures to {filename1} and {filename2}...")
-        fig.savefig(filename1, dpi=150)
-        fig2.savefig(filename2, dpi=150)
-        print(f"[INFO] Saved {filename1} and {filename2}")
+    # Always save to script directory with timestamp
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename1 = os.path.join(script_dir, f"dqn_stats_1_{timestamp}.png")
+    filename2 = os.path.join(script_dir, f"dqn_stats_2_{timestamp}.png")
+    print(f"[INFO] Saving figures to {filename1} and {filename2}...")
+    fig.savefig(filename1, dpi=150)
+    fig2.savefig(filename2, dpi=150)
+    print(f"[INFO] Saved {filename1} and {filename2}")
 
-    if show and savepath is None:
+    if show:
         print("[INFO] Displaying plots...")
         plt.show()
     else:
@@ -176,7 +176,6 @@ def main():
     parser = argparse.ArgumentParser(description="Plot DQN diagnostics CSV")
     parser.add_argument("--file", "-f", default="dqn_stats.csv", help="CSV file path")
     parser.add_argument("--window", "-w", type=int, default=200, help="rolling window for smoothing (use 1 for raw)")
-    parser.add_argument("--save", "-s", default=None, help="save figure to this path (png)")
     parser.add_argument("--no-show", action="store_true", help="don't call plt.show()")
     args = parser.parse_args()
 
@@ -188,7 +187,7 @@ def main():
 
     df = ensure_columns(df)
 
-    plot_diagnostics(df, window=args.window, savepath=args.save, show=(not args.no_show))
+    plot_diagnostics(df, window=args.window, show=(not args.no_show))
 
 if __name__ == "__main__":
     main()
