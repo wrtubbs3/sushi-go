@@ -566,6 +566,8 @@ class DeepQLearningAgent:
                 avg_q = q_values.mean().item()
                 replay_size = len(self.memory)
                 batch_size = self.batch_size
+                batch_reward_std = float(rewards.std().item())
+                batch_reward_95 = float(np.percentile(rewards.cpu().numpy(), 95))
                 row = [
                     int(time.time()),
                     int(self.steps_done),
@@ -582,7 +584,9 @@ class DeepQLearningAgent:
                     int(n_terminals),
                     float(max_next_q_stat),
                     float(q_targets_mean),
-                    int(is_target_update)
+                    int(is_target_update),
+                    float(batch_reward_std),
+                    float(batch_reward_95)
                 ]
                 with open(self.stats_file, "a", newline="") as f:
                     writer = csv.writer(f)
@@ -590,17 +594,6 @@ class DeepQLearningAgent:
             except Exception as e:
                 # don't crash training on logging failure
                 print(f"[WARN] Failed to write DQN stats: {e}")
-
-        
-
-
-
-
-
-
-
-
-        
     
     # -------------------------
     # Save & Load

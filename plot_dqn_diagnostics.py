@@ -8,6 +8,7 @@ Requires:
     pandas, matplotlib, numpy
 """
 
+import datetime
 import argparse
 import os
 import sys
@@ -35,13 +36,17 @@ def ensure_columns(df):
         "timestamp", "steps_done", "games_trained", "loss", "td_error", "avg_q",
         "epsilon", "replay_size", "batch_size", "grad_norm",
         "batch_reward_mean", "batch_reward_max", "n_terminals",
-        "max_next_q", "q_targets_mean", "is_target_update"
+        "max_next_q", "q_targets_mean", "is_target_update", "batch_reward_std",
+        "batch_reward_95"
     ]
     for col in expected:
         if col not in df.columns:
             df[col] = np.nan
     int_cols = ["steps_done", "games_trained", "replay_size", "batch_size", "n_terminals", "is_target_update"]
-    float_cols = ["loss", "td_error", "avg_q", "epsilon", "grad_norm", "batch_reward_mean", "batch_reward_max", "max_next_q", "q_targets_mean"]
+    float_cols = [
+        "loss", "td_error", "avg_q", "epsilon", "grad_norm", "batch_reward_mean", 
+        "batch_reward_max", "max_next_q", "q_targets_mean", "batch_reward_std",
+        "batch_reward_95"]
     for c in int_cols + float_cols:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce")
@@ -53,6 +58,7 @@ def rolling_or_raw(series, window):
     return series
 
 def plot_diagnostics(df, window=1, savepath=None, show=True):
+    print("[INFO] Starting plot generation...")
     style = choose_style()
     if style:
         try:
@@ -67,10 +73,30 @@ def plot_diagnostics(df, window=1, savepath=None, show=True):
         x = df.index.values
         x_label = "index"
 
-    target_updates = df.index[df['is_target_update'] == 1].tolist() if 'is_target_update' in df.columns else []
+    print(f"[INFO] DataFrame has {len(df)} rows, computing target updates...")
+    # Robustly coerce the column to numeric (handles strings, floats, bools, NaN)
+    if 'is_target_update' in df.columns:
+        try:
+            mask = pd.to_numeric(df['is_target_update'], errors='coerce').fillna(0).astype(int)
+        except Exception:
+            # fallback: interpret truthy values
+            mask = df['is_target_update'].astype(bool).astype(int)
+        target_updates = np.where(mask == 1)[0]
+        n_updates = len(target_updates)
+        print(f"[INFO] Found {n_updates} target updates (raw)")
+        # Avoid plotting an excessive number of vertical lines which will hang matplotlib
+        max_markers = 2000
+        if n_updates > max_markers:
+            step = max(1, n_updates // max_markers)
+            target_updates = target_updates[::step]
+            print(f"[INFO] Downsampled target updates to {len(target_updates)} markers (every {step}th)")
+        target_updates = target_updates.tolist()
+    else:
+        target_updates = []
 
     w = int(window) if window is not None else 1
 
+    print(f"[INFO] Creating Figure 1 (loss, td_error, replay_size, grad_norm)...")
     fig, axs = plt.subplots(4, 1, figsize=(14, 12), sharex=True)
     fig.suptitle("DQN Training Diagnostics", fontsize=14)
 
@@ -105,6 +131,7 @@ def plot_diagnostics(df, window=1, savepath=None, show=True):
     ax3b.set_ylabel("batch_reward_max")
     ax3b.legend(loc='upper right')
 
+    print(f"[INFO] Creating Figure 2 (terminals, max_next_q, q_targets)...")
     fig2, axs2 = plt.subplots(2, 1, figsize=(14, 6), sharex=True)
     fig2.suptitle("Terminal & Target Q Diagnostics", fontsize=14)
     axs2[0].plot(x, df['n_terminals'], label='n_terminals', color='C7')
@@ -115,8 +142,8 @@ def plot_diagnostics(df, window=1, savepath=None, show=True):
     axs2[1].set_ylabel("Q stats")
     axs2[1].legend()
 
-    # CORRECTED concatenation: convert both to lists first
     all_axes = list(axs) + list(axs2)
+    print(f"[INFO] Adding {len(target_updates)} target update markers...")
     for axis in all_axes:
         for idx in target_updates:
             if idx < len(x):
@@ -128,15 +155,22 @@ def plot_diagnostics(df, window=1, savepath=None, show=True):
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
     if savepath:
-        base, ext = os.path.splitext(savepath)
-        fig.savefig(base + "_part1.png", dpi=150)
-        fig2.savefig(base + "_part2.png", dpi=150)
-        print(f"Saved {base + '_part1.png'} and {base + '_part2.png'}")
+        # Add timestamp to filename
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename1 = f"dqn_stats_1_{timestamp}.png"
+        filename2 = f"dqn_stats_2_{timestamp}.png"
+        print(f"[INFO] Saving figures to {filename1} and {filename2}...")
+        fig.savefig(filename1, dpi=150)
+        fig2.savefig(filename2, dpi=150)
+        print(f"[INFO] Saved {filename1} and {filename2}")
 
-    if show:
+    if show and savepath is None:
+        print("[INFO] Displaying plots...")
         plt.show()
     else:
         plt.close('all')
+    
+    print("[INFO] Plot generation complete.")
 
 def main():
     parser = argparse.ArgumentParser(description="Plot DQN diagnostics CSV")
