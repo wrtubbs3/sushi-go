@@ -1,6 +1,6 @@
 params = {
-    "iterations": int(5*1e2),
-    "save_every": int(1e4),  # how often to save Q-table
+    "iterations": int(1e4),  # number of games to simulate
+    "save_every": int(1e3),  # how often to save Q-table
     "winner_bonus": 10,     # flat reward to winners
     "alpha_obs_factor": 0.2,  # observation learning factor
     "algorithm": "q-learning", # ["q-learning", "monte-carlo"]
