@@ -2,7 +2,7 @@
 Quick diagnostic plots for DQN training CSV with robust style fallback.
 
 Usage:
-    python plot_dqn_diagnostics.py --file dqn_stats.csv --window 200 --save diag.png
+    python plot_dqn_diagnostics.py --file dqn_stats.csv --window 200
 
 Requires:
     pandas, matplotlib, numpy
@@ -44,7 +44,7 @@ def ensure_columns(df):
             df[col] = np.nan
     int_cols = ["steps_done", "games_trained", "replay_size", "batch_size", "n_terminals", "is_target_update"]
     float_cols = [
-        "loss", "td_error", "avg_q", "epsilon", "grad_norm", "batch_reward_mean", 
+        "loss", "td_error", "avg_q", "epsilon", "grad_norm", "batch_reward_mean",
         "batch_reward_max", "max_next_q", "q_targets_mean", "batch_reward_std",
         "batch_reward_95"]
     for c in int_cols + float_cols:
@@ -142,7 +142,19 @@ def plot_diagnostics(df, window=1, show=True):
     axs2[1].set_ylabel("Q stats")
     axs2[1].legend()
 
-    all_axes = list(axs) + list(axs2)
+    # NEW: Figure 3 for batch reward distribution stats
+    print(f"[INFO] Creating Figure 3 (batch_reward_std, batch_reward_95)...")
+    fig3, axs3 = plt.subplots(2, 1, figsize=(14, 6), sharex=True)
+    fig3.suptitle("Batch Reward Distribution Diagnostics", fontsize=14)
+    axs3[0].plot(x, rolling_or_raw(df['batch_reward_std'], w), label='batch_reward_std', color='C10')
+    axs3[0].set_ylabel("batch_reward_std")
+    axs3[0].legend(loc='upper left')
+    axs3[1].plot(x, rolling_or_raw(df['batch_reward_95'], w), label='batch_reward_95', color='C11')
+    axs3[1].set_ylabel("batch_reward_95")
+    axs3[1].legend(loc='upper left')
+
+    # Build master axis list and add target-update marker lines (downsampled)
+    all_axes = list(axs) + list(axs2) + list(axs3)
     print(f"[INFO] Adding {len(target_updates)} target update markers...")
     for axis in all_axes:
         for idx in target_updates:
@@ -151,6 +163,7 @@ def plot_diagnostics(df, window=1, show=True):
 
     axs[-1].set_xlabel(x_label)
     axs2[-1].set_xlabel(x_label)
+    axs3[-1].set_xlabel(x_label)
 
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
@@ -159,17 +172,19 @@ def plot_diagnostics(df, window=1, show=True):
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     filename1 = os.path.join(script_dir, f"dqn_stats_1_{timestamp}.png")
     filename2 = os.path.join(script_dir, f"dqn_stats_2_{timestamp}.png")
-    print(f"[INFO] Saving figures to {filename1} and {filename2}...")
+    filename3 = os.path.join(script_dir, f"dqn_stats_3_{timestamp}.png")
+    print(f"[INFO] Saving figures to {filename1}, {filename2} and {filename3}...")
     fig.savefig(filename1, dpi=150)
     fig2.savefig(filename2, dpi=150)
-    print(f"[INFO] Saved {filename1} and {filename2}")
+    fig3.savefig(filename3, dpi=150)
+    print(f"[INFO] Saved {filename1}, {filename2} and {filename3}")
 
     if show:
         print("[INFO] Displaying plots...")
         plt.show()
     else:
         plt.close('all')
-    
+
     print("[INFO] Plot generation complete.")
 
 def main():
