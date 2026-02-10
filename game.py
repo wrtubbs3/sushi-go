@@ -322,9 +322,7 @@ class SushiGo:
         for i in range(n_players):
             player = players[i]
             state_dict, actions_dict, chosen_action = actions_taken[i][1], actions_taken[i][2], actions_taken[i][3]
-            raw_reward = (new_points[i] - old_points[i])   # incremental reward
-            clipped_reward = max(-6.0, min(6.0, raw_reward))
-            reward = clipped_reward     # use clipped reward for learning stability
+            reward = (new_points[i] - old_points[i])   # incremental reward
 
             # Construct next state dictionary
             next_state_dict = build_state_dict(player.cards_in_hand, player.cards_on_table)         
