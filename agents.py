@@ -1,4 +1,5 @@
 # agents.py
+from cmath import tau
 import os
 import csv
 import time
@@ -256,7 +257,7 @@ Transition = namedtuple("Transition", ["state", "action", "reward", "next_state"
 
 class DeepQLearningAgent:
     def __init__(self, state_dim=None, action_dim=None, gamma=0.99, lr=1e-4, epsilon=0.2, epsilon_decay = 0.999,
-                 epsilon_min = 0.05, train=True, buffer_size=50000, batch_size=64, target_update=5000, 
+                 epsilon_min = 0.05, train=True, buffer_size=50000, batch_size=64, target_update=5000, tau=0.005,
                  min_replay_size=None, device=None):
         """
         Deep Q-Learning agent with explicit, canonical action->index mapping to avoid
@@ -269,6 +270,7 @@ class DeepQLearningAgent:
         - buffer_size: replay buffer size
         - batch_size: minibatch size for learning
         - target_update: how often (in steps) to update the target network
+        - tau: Polyak averaging factor
         - min_replay_size: how many transitions before learning starts (defaults to max(1000, batch_size)).
         - device: torch device to use (cpu by default).
         """
@@ -279,6 +281,7 @@ class DeepQLearningAgent:
         self.train = train
         self.batch_size = batch_size
         self.target_update = target_update
+        self.tau = tau
         self.device = torch.device(device if device is not None else ("cuda" if torch.cuda.is_available() else "cpu"))
         print(f"[INFO] Using device: {self.device}")
 
@@ -455,10 +458,6 @@ class DeepQLearningAgent:
         if len(self.memory) >= max(self.batch_size, self.min_replay_size):
             self.learn()
 
-        # Target net hard update on schedule
-        if self.steps_done % self.target_update == 0:
-            self.target_net.load_state_dict(self.q_net.state_dict())
-
     def update_from_observation(self, state_dict, action, reward, next_state_dict, next_actions_dict):
         """
         Allow the Deep Q agent to learn from observing other players' transitions.
@@ -560,9 +559,15 @@ class DeepQLearningAgent:
                 total_norm += (param_norm.item() ** 2)
         grad_norm = total_norm ** 0.5 if total_norm > 0.0 else 0.0
 
-        # gradient clipping to avoid exploding updates
+        # Gradient clipping to avoid exploding updates
         clip_grad_norm_(self.q_net.parameters(), max_norm=10.0)
         self.optimizer.step()
+
+        # Soft (Polyak) update of target network
+        if getattr(self, "tau", None) is not None and self.tau > 0.0:
+            tau = float(self.tau)
+            for param, target_param in zip(self.q_net.parameters(), self.target_net.parameters()):
+                target_param.data.copy_(tau * param.data + (1.0 - tau) * target_param.data)
 
         # Optional diagnostics logging to CSV
         if getattr(self, "stats_file", None):
