@@ -521,10 +521,13 @@ class DeepQLearningAgent:
 
         # Q(s,a) for taken actions
         q_values = self.q_net(states).gather(1, actions)  # [batch, 1]
-
-        # Targets computed with target network (detached)
+        
+        # Double DQN target computation
         with torch.no_grad():
-            max_next_q = self.target_net(next_states).max(1, keepdim=True)[0]
+            # choose best actions according to online network
+            next_action_idxs = self.q_net(next_states).argmax(dim=1, keepdim=True)        # [batch,1]
+            # evaluate them using the target network
+            max_next_q = self.target_net(next_states).gather(1, next_action_idxs)        # [batch,1]
             q_targets = rewards + self.gamma * (1.0 - dones) * max_next_q
 
         # Use Huber (SmoothL1) loss for robustness to outliers
