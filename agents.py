@@ -498,9 +498,10 @@ class DeepQLearningAgent:
         transition = Transition(state, action_idx, reward, next_state, bool(done))
         self.memory.append(transition)
 
-        # Only learn after we have a reasonable buffer size (avoid overfitting to tiny buffer)
-        if len(self.memory) >= max(self.batch_size, self.min_replay_size):
-            self.learn()
+        # # To trigger learning from observations, uncomment this block
+        # # Only learn after we have a reasonable buffer size (avoid overfitting to tiny buffer)
+        # if len(self.memory) >= max(self.batch_size, self.min_replay_size):
+        #     self.learn()
 
     # -------------------------
     # Training step
