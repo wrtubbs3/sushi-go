@@ -101,15 +101,18 @@ def plot_diagnostics(df, window=1, show=True):
     fig.suptitle("DQN Training Diagnostics", fontsize=14)
 
     ax0 = axs[0]
-    ax0.plot(x, rolling_or_raw(df['loss'], w), label='loss', color='C0', alpha=0.9)
+    # ax0.plot(x, rolling_or_raw(df['loss'], w), label='loss', color='C0', alpha=0.9)
+    ax0.semilogy(x, rolling_or_raw(df['loss'], w), label='loss', color='C0', alpha=0.9)
     ax0.set_ylabel("loss")
     ax0.legend(loc='upper left')
     ax0b = ax0.twinx()
-    ax0b.plot(x, rolling_or_raw(df['avg_q'], w), label='avg_q', color='C2', alpha=0.6)
+    # ax0b.plot(x, rolling_or_raw(df['avg_q'], w), label='avg_q', color='C2', alpha=0.6)
+    ax0b.semilogy(x, rolling_or_raw(df['avg_q'], w), label='avg_q', color='C2', alpha=0.6)
     ax0b.set_ylabel("avg_q")
     ax0b.legend(loc='upper right')
 
-    axs[1].plot(x, rolling_or_raw(df['td_error'], w), label='td_error', color='C1')
+    # axs[1].plot(x, rolling_or_raw(df['td_error'], w), label='td_error', color='C1')
+    axs[1].semilogy(x, rolling_or_raw(df['td_error'], w), label='td_error', color='C1')
     axs[1].set_ylabel("td_error")
     axs[1].legend(loc='upper left')
 
@@ -123,11 +126,13 @@ def plot_diagnostics(df, window=1, show=True):
     ax2b.legend(loc='upper right')
 
     ax3 = axs[3]
-    ax3.plot(x, rolling_or_raw(df['grad_norm'], w), label='grad_norm', color='C5')
+    # ax3.plot(x, rolling_or_raw(df['grad_norm'], w), label='grad_norm', color='C5')
+    ax3.semilogy(x, rolling_or_raw(df['grad_norm'], w), label='grad_norm', color='C5')
     ax3.set_ylabel("grad_norm")
     ax3.legend(loc='upper left')
     ax3b = ax3.twinx()
-    ax3b.plot(x, rolling_or_raw(df['batch_reward_max'], w), label='batch_reward_max', color='C6', alpha=0.7)
+    # ax3b.plot(x, rolling_or_raw(df['batch_reward_max'], w), label='batch_reward_max', color='C6', alpha=0.7)
+    ax3b.semilogy(x, rolling_or_raw(df['batch_reward_max'], w), label='batch_reward_max', color='C6', alpha=0.7)
     ax3b.set_ylabel("batch_reward_max")
     ax3b.legend(loc='upper right')
 
@@ -137,12 +142,14 @@ def plot_diagnostics(df, window=1, show=True):
     axs2[0].plot(x, df['n_terminals'], label='n_terminals', color='C7')
     axs2[0].set_ylabel("n_terminals")
     axs2[0].legend()
-    axs2[1].plot(x, rolling_or_raw(df['max_next_q'], w), label='max_next_q', color='C8', alpha=0.9)
-    axs2[1].plot(x, rolling_or_raw(df['q_targets_mean'], w), label='q_targets_mean', color='C9', alpha=0.7)
+    # axs2[1].plot(x, rolling_or_raw(df['max_next_q'], w), label='max_next_q', color='C8', alpha=0.9)
+    axs2[1].semilogy(x, rolling_or_raw(df['max_next_q'], w), label='max_next_q', color='C8', alpha=0.9)
+    # axs2[1].plot(x, rolling_or_raw(df['q_targets_mean'], w), label='q_targets_mean', color='C9', alpha=0.7)
+    axs2[1].semilogy(x, rolling_or_raw(df['q_targets_mean'], w), label='q_targets_mean', color='C9', alpha=0.7)
     axs2[1].set_ylabel("Q stats")
     axs2[1].legend()
 
-    # NEW: Figure 3 for batch reward distribution stats
+    # Figure 3 for batch reward distribution stats
     print(f"[INFO] Creating Figure 3 (batch_reward_std, batch_reward_95)...")
     fig3, axs3 = plt.subplots(2, 1, figsize=(14, 6), sharex=True)
     fig3.suptitle("Batch Reward Distribution Diagnostics", fontsize=14)
