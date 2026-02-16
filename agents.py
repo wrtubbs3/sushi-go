@@ -1,5 +1,3 @@
-# agents.py
-from cmath import tau
 import os
 import csv
 import time
@@ -312,10 +310,9 @@ class DeepQLearningAgent:
 
         self.optimizer = optim.Adam(self.q_net.parameters(), lr=lr)
 
-        # Training stats logging (start fresh each run)
-        # set to None to disable logging
-        self.stats_file = "dqn_stats.csv"
-
+        # Training stats logging
+        self.stats_file = "dqn_stats.csv"   # set to None to disable logging
+        
         # canonical list of CSV columns we will always use
         self.stats_fields = [
             "timestamp",
@@ -361,6 +358,10 @@ class DeepQLearningAgent:
                 print(f"[INFO] Created new stats file {self.stats_file}")
             except Exception as e:
                 print(f"[WARN] Failed to initialize stats file {self.stats_file}: {e}")
+
+        # Diagnostics buffering to reduce I/O cost
+        self._stats_buf = []                  # in-memory buffer for CSV rows
+        self._stats_flush_every = 100         # flush to disk every N rows (adjust as needed)
 
         # Training bookkeeping
         self.steps_done = 0
@@ -458,6 +459,13 @@ class DeepQLearningAgent:
         if len(self.memory) >= max(self.batch_size, self.min_replay_size):
             self.learn()
 
+        # Target net hard update on schedule (kept for compatibility; if using soft updates in learn() this will rarely be hit)
+        if self.target_update and (self.steps_done % self.target_update == 0):
+            try:
+                self.target_net.load_state_dict(self.q_net.state_dict())
+            except Exception:
+                pass
+
     def update_from_observation(self, state_dict, action, reward, next_state_dict, next_actions_dict):
         """
         Allow the Deep Q agent to learn from observing other players' transitions.
@@ -498,10 +506,10 @@ class DeepQLearningAgent:
         transition = Transition(state, action_idx, reward, next_state, bool(done))
         self.memory.append(transition)
 
-        # # To trigger learning from observations, uncomment this block
-        # # Only learn after we have a reasonable buffer size (avoid overfitting to tiny buffer)
-        # if len(self.memory) >= max(self.batch_size, self.min_replay_size):
-        #     self.learn()
+        # NOTE: learning on observed transitions is intentionally disabled to avoid
+        # rapid repeated updates caused by floods of observations. The main agent's
+        # update() calls will trigger learning when appropriate.
+        return
 
     # -------------------------
     # Training step
@@ -521,7 +529,7 @@ class DeepQLearningAgent:
 
         # Q(s,a) for taken actions
         q_values = self.q_net(states).gather(1, actions)  # [batch, 1]
-        
+
         # Double DQN target computation
         with torch.no_grad():
             # choose best actions according to online network
@@ -599,12 +607,20 @@ class DeepQLearningAgent:
                     float(batch_reward_std),
                     float(batch_reward_95)
                 ]
-                with open(self.stats_file, "a", newline="") as f:
-                    writer = csv.writer(f)
-                    writer.writerow(row)
+                # Append to in-memory buffer and flush when it reaches threshold
+                self._stats_buf.append(row)
+                if len(self._stats_buf) >= getattr(self, "_stats_flush_every", 100):
+                    # flush buffered rows to disk
+                    try:
+                        with open(self.stats_file, "a", newline="", encoding="utf-8") as f:
+                            writer = csv.writer(f)
+                            writer.writerows(self._stats_buf)
+                        self._stats_buf.clear()
+                    except Exception as e:
+                        print(f"[WARN] Failed to flush stats buffer: {e}")
             except Exception as e:
                 # don't crash training on logging failure
-                print(f"[WARN] Failed to write DQN stats: {e}")
+                print(f"[WARN] Failed to buffer DQN stats: {e}")
 
     # -------------------------
     # Save & Load
@@ -613,6 +629,16 @@ class DeepQLearningAgent:
         """Save model + optimizer state."""
         if not self.train:
             return
+
+        # flush any buffered stats before saving
+        try:
+            if getattr(self, "_stats_buf", None):
+                with open(self.stats_file, "a", newline="", encoding="utf-8") as f:
+                    writer = csv.writer(f)
+                    writer.writerows(self._stats_buf)
+                self._stats_buf.clear()
+        except Exception:
+            pass
 
         data = {
             "model_state_dict": self.q_net.state_dict(),
