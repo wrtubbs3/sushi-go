@@ -35,7 +35,17 @@ class Player:
             self.agent = DeepQLearningAgent()
 
             # Load agent file if provided
-            
+            if q_table_file is not None:
+                try:
+                    # `DeepQLearningAgent.load` appends ".pkl", so accept either
+                    # a name with or without the suffix from the caller.
+                    fname = q_table_file
+                    if fname.endswith('.pkl'):
+                        fname = fname[:-4]
+                    self.agent.load(fname)
+                    print(f"[INFO] {self.name} loaded DQN agent from {q_table_file}")
+                except Exception as e:
+                    print(f"[WARN] Could not load DQN agent for {self.name} from {q_table_file}: {e}")
 
         else:
             self.agent = None
