@@ -254,8 +254,8 @@ Transition = namedtuple("Transition", ["state", "action", "reward", "next_state"
 
 
 class DeepQLearningAgent:
-    def __init__(self, state_dim=None, action_dim=None, gamma=0.99, lr=1e-4, epsilon=0.2, epsilon_decay = 0.999,
-                 epsilon_min = 0.05, train=True, buffer_size=50000, batch_size=64, target_update=5000, tau=0.005,
+    def __init__(self, state_dim=None, action_dim=None, gamma=0.99, lr=1e-5, epsilon=0.2, epsilon_decay = 0.9998,
+                 epsilon_min = 0.05, train=True, buffer_size=50000, batch_size=64, target_update=5000, tau=0.001,
                  min_replay_size=None, device=None):
         """
         Deep Q-Learning agent with explicit, canonical action->index mapping to avoid
@@ -269,7 +269,7 @@ class DeepQLearningAgent:
         - batch_size: minibatch size for learning
         - target_update: how often (in steps) to update the target network
         - tau: Polyak averaging factor
-        - min_replay_size: how many transitions before learning starts (defaults to max(1000, batch_size)).
+        - min_replay_size: how many transitions before learning starts (defaults to max(10000, batch_size)).
         - device: torch device to use (cpu by default).
         """
         self.gamma = gamma
@@ -300,7 +300,7 @@ class DeepQLearningAgent:
 
         # Replay buffer
         self.memory = deque(maxlen=buffer_size)
-        self.min_replay_size = min_replay_size if min_replay_size is not None else max(1000, batch_size)
+        self.min_replay_size = min_replay_size if min_replay_size is not None else max(10000, batch_size)
 
         # Networks
         self.q_net = QNetwork(self.state_dim, self.action_dim).to(self.device)
@@ -569,7 +569,7 @@ class DeepQLearningAgent:
         grad_norm = total_norm ** 0.5 if total_norm > 0.0 else 0.0
 
         # Gradient clipping to avoid exploding updates
-        clip_grad_norm_(self.q_net.parameters(), max_norm=10.0)
+        clip_grad_norm_(self.q_net.parameters(), max_norm=5.0)
         self.optimizer.step()
 
         # Soft (Polyak) update of target network
@@ -609,7 +609,7 @@ class DeepQLearningAgent:
                 ]
                 # Append to in-memory buffer and flush when it reaches threshold
                 self._stats_buf.append(row)
-                if len(self._stats_buf) >= getattr(self, "_stats_flush_every", 100):
+                if len(self._stats_buf) >= getattr(self, "_stats_flush_every", 1000):
                     # flush buffered rows to disk
                     try:
                         with open(self.stats_file, "a", newline="", encoding="utf-8") as f:
