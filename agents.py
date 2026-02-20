@@ -1,5 +1,6 @@
 import os
 import csv
+from pathlib import Path
 import time
 import random
 import numpy as np
@@ -12,8 +13,32 @@ from collections import deque, namedtuple
 import state_action_reward as sar
 from torch.nn.utils import clip_grad_norm_
 
-# Module-level flag to ensure diagnostic stats file is only created once per process
-STATS_FILE_INITIALIZED = False
+def initialize_stats_file(stats_file, header_fields):
+    """
+    Always creates a fresh stats CSV file.
+    Deletes any existing file first.
+    Returns resolved absolute Path.
+    """
+    stats_path = Path(stats_file).resolve()
+
+    print(f"[INFO] Initializing stats file")
+    print(f"       Absolute path: {stats_path}")
+    print(f"       Working dir : {os.getcwd()}")
+
+    # Remove old file if present
+    if stats_path.exists():
+        stats_path.unlink()
+        print(f"[INFO] Removed existing stats file.")
+
+    # Create fresh file with header
+    with open(stats_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(header_fields)
+
+    print(f"[INFO] Created new stats file.")
+    print(f"[INFO] Exists after create? {stats_path.exists()}")
+
+    return stats_path
 
 # Q-Learning Agent:
 # 
@@ -335,29 +360,8 @@ class DeepQLearningAgent:
             "batch_reward_95"
         ]
 
-        # Remove any existing stats file once and create a fresh file with header.
-        # Use a module-level flag so multiple agent instances in the same process don't
-        # repeatedly delete/create the file.
-        global STATS_FILE_INITIALIZED
-        if self.stats_file and not STATS_FILE_INITIALIZED:
-            try:
-                # delete old file if present (start fresh)
-                if os.path.exists(self.stats_file):
-                    try:
-                        os.remove(self.stats_file)
-                        print(f"[INFO] Removed existing stats file {self.stats_file} to start fresh.")
-                    except Exception as e:
-                        print(f"[WARN] Could not remove existing stats file {self.stats_file}: {e}")
-
-                # create fresh file with canonical header
-                with open(self.stats_file, "w", newline="", encoding="utf-8") as f:
-                    writer = csv.writer(f)
-                    writer.writerow(self.stats_fields)
-
-                STATS_FILE_INITIALIZED = True
-                print(f"[INFO] Created new stats file {self.stats_file}")
-            except Exception as e:
-                print(f"[WARN] Failed to initialize stats file {self.stats_file}: {e}")
+        # Initialize CSV file with header for training stats logging
+        self.stats_file = initialize_stats_file("dqn_stats.csv", self.stats_fields)
 
         # Diagnostics buffering to reduce I/O cost
         self._stats_buf = []                  # in-memory buffer for CSV rows
