@@ -365,7 +365,7 @@ class DeepQLearningAgent:
 
         # Diagnostics buffering to reduce I/O cost
         self._stats_buf = []                  # in-memory buffer for CSV rows
-        self._stats_flush_every = 100         # flush to disk every N rows (adjust as needed)
+        self._stats_flush_every = 1000         # flush to disk every N rows (adjust as needed)
 
         # Training bookkeeping
         self.steps_done = 0
