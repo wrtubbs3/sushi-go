@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from game import SushiGo
 import config
+import os
 
 # From 2-5 players allowed
 player_names = ['Al', 'Bob', 'Charlie', 'Doug']
@@ -31,6 +32,11 @@ for p in game.players:
         p.agent.train = True
         if p.agent.train == True:
             trainable_agents.append(p.agent)
+
+# Diagnostic: list trainable agents
+print("[INFO] Trainable agents summary:")
+for agent in trainable_agents:
+    print(f"  - {agent.__class__.__name__}: train={getattr(agent,'train',None)}, games_trained={getattr(agent,'games_trained',0)}")
 
 # Number of games to simulate
 n_games = config.params['iterations']
@@ -56,17 +62,27 @@ for i in tqdm(range(n_games)):
     save_interval = config.params['save_every']
     if (i + 1) % save_interval == 0:
         for agent in trainable_agents:
-            if agent.__class__.__name__ == "QLearningAgent":
-                agent.save(q_table_filename)
-            elif agent.__class__.__name__ == "DeepQLearningAgent":
-                agent.save(dqn_filename)
+            try:
+                if agent.__class__.__name__ == "QLearningAgent":
+                    print(f"[INFO] Saving Q-learning agent to {os.path.abspath(q_table_filename)}.pkl")
+                    agent.save(q_table_filename)
+                elif agent.__class__.__name__ == "DeepQLearningAgent":
+                    print(f"[INFO] Saving Deep Q agent to {os.path.abspath(dqn_filename)}.pkl")
+                    agent.save(dqn_filename)
+            except Exception as e:
+                print(f"[ERROR] Failed to save agent {agent}: {e}")
 
 # Save final versions
 for agent in trainable_agents:
-    if agent.__class__.__name__ == "QLearningAgent":
-        agent.save(q_table_filename)
-    elif agent.__class__.__name__ == "DeepQLearningAgent":
-        agent.save(dqn_filename)
+    try:
+        if agent.__class__.__name__ == "QLearningAgent":
+            print(f"[INFO] Final save Q-learning agent to {os.path.abspath(q_table_filename)}.pkl")
+            agent.save(q_table_filename)
+        elif agent.__class__.__name__ == "DeepQLearningAgent":
+            print(f"[INFO] Final save Deep Q agent to {os.path.abspath(dqn_filename)}.pkl")
+            agent.save(dqn_filename)
+    except Exception as e:
+        print(f"[ERROR] Failed final save for agent {agent}: {e}")
 
 # Compute statistics for each player
 total_score = []
