@@ -9,10 +9,12 @@ from players import Player
 import config
 
 class SushiGo:
-    def __init__(self, n, player_names, player_strategies, player_qtables=None):
+    def __init__(self, n, player_names, player_strategies, player_qtables=None, player_agents=None):
         """[n] is an integer representing the number of players. [player_names] is a length-n list 
-        of strings containing each player's name. [player_strategies] is a lengh-n list containing
-        each player's strategy."""
+        of strings containing each player's name. [player_strategies] is a length-n list containing
+        each player's strategy. [player_agents] optionally contains pre-built agent objects to
+        attach to each player, which is useful when reusing a single training agent across many
+        episode-specific seatings."""
 
         # Check that each player has a name
         if not (len(player_names) == n):
@@ -43,6 +45,8 @@ class SushiGo:
         
         if player_qtables is None:
             player_qtables = [None] * n
+        if player_agents is None:
+            player_agents = [None] * n
         
         # Create players
         self.players = []
@@ -51,7 +55,7 @@ class SushiGo:
             # name = input(f"Input Player {j} Name:  ")
             # strategy = input(f"Input Player {j} Strategy: ")
             # self.players.append(Player(name, strategy))
-            self.players.append(Player(player_names[i], player_strategies[i], player_qtables[i]))
+            self.players.append(Player(player_names[i], player_strategies[i], player_qtables[i], player_agents[i]))
 
     def play_game(self):
         

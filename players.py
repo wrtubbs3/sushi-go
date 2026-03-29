@@ -1,11 +1,12 @@
 from agents import QLearningAgent, DeepQLearningAgent
 
 class Player:
-    def __init__(self, name, strategy, q_table_file=None):
+    def __init__(self, name, strategy, q_table_file=None, agent=None):
         """
         Player name is a string.
         Strategy is one of: "random", "sequential", "user choice", "hierarchy", "q-learning", "deep q-learning".
         If strategy == "q-learning", you can optionally provide q_table_file to load a saved Q-table.
+        If agent is provided, reuse that already-instantiated agent instead of creating/loading one here.
         """
         self.points = 0
         self.cards_in_hand = []
@@ -17,6 +18,12 @@ class Player:
             self.strategy = "random"
         else:
             self.strategy = strategy
+
+        # Reuse an existing agent when the caller wants one persistent learner
+        # to participate in many freshly-created games.
+        if agent is not None:
+            self.agent = agent
+            return
 
         # If applicable, determine agent
         if self.strategy == "q-learning":

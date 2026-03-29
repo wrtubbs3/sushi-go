@@ -280,7 +280,7 @@ Transition = namedtuple("Transition", ["state", "action", "reward", "next_state"
 
 class DeepQLearningAgent:
     def __init__(self, state_dim=None, action_dim=None, gamma=0.99, lr=1e-5, epsilon=0.1, epsilon_decay = 0.99999,
-                 epsilon_min = 0.02, train=True, buffer_size=50000, batch_size=64, target_update=5000, tau=0.005,
+                 epsilon_min = 0.01, train=True, buffer_size=50000, batch_size=64, target_update=5000, tau=0.005,
                  min_replay_size=None, device=None):
         """
         Deep Q-Learning agent with explicit, canonical action->index mapping to avoid
@@ -510,9 +510,10 @@ class DeepQLearningAgent:
         transition = Transition(state, action_idx, reward, next_state, bool(done))
         self.memory.append(transition)
 
-        # NOTE: learning on observed transitions is intentionally disabled to avoid
-        # rapid repeated updates caused by floods of observations. The main agent's
-        # update() calls will trigger learning when appropriate.
+        # Only learn after we have a reasonable buffer size (avoid overfitting to tiny buffer)
+        if len(self.memory) >= max(self.batch_size, self.min_replay_size):
+            self.learn()
+
         return
 
     # -------------------------
