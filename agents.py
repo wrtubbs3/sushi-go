@@ -11,6 +11,7 @@ import torch.nn as nn
 import torch.optim as optim
 from collections import deque, namedtuple
 import state_action_reward as sar
+import config
 from torch.nn.utils import clip_grad_norm_
 
 def initialize_stats_file(stats_file, header_fields):
@@ -205,8 +206,8 @@ class QLearningAgent:
     # -------------------------
     # Save & Load
     # -------------------------
-    def save(self, filename_base="q_table"):
-        """Save Q-table + metadata as .pkl and .csv."""
+    def save(self, filename_base="q_table", include_csv=True):
+        """Save Q-table metadata as .pkl and optionally export a large CSV snapshot."""
         if not self.q:
             print("[WARN] No Q-values to save.")
             return
@@ -227,18 +228,22 @@ class QLearningAgent:
         with open(filename_base + ".pkl", "wb") as f:
             pickle.dump(data, f)
 
-        # Save human-readable CSV
-        states, actions, values = zip(*[(s, a, v) for (s, a), v in self.q.items()])
-        df = pd.DataFrame({
-            "state": states,
-            "action": actions,
-            "value": values,
-            "games_trained": self.games_trained,  # repeated in each row
-        })
-        df.to_csv(filename_base + ".csv", index=False)
-
-        print(f"[INFO] Agent saved to {filename_base}.pkl, {filename_base}.csv"
-              f" (games_trained={self.games_trained})")
+        if include_csv:
+            # The CSV is convenient for inspection but very expensive for large
+            # tables, so callers can opt in only for occasional snapshots.
+            states, actions, values = zip(*[(s, a, v) for (s, a), v in self.q.items()])
+            df = pd.DataFrame({
+                "state": states,
+                "action": actions,
+                "value": values,
+                "games_trained": self.games_trained,  # repeated in each row
+            })
+            df.to_csv(filename_base + ".csv", index=False)
+            print(f"[INFO] Agent saved to {filename_base}.pkl, {filename_base}.csv"
+                  f" (games_trained={self.games_trained})")
+        else:
+            print(f"[INFO] Agent saved to {filename_base}.pkl"
+                  f" (games_trained={self.games_trained})")
 
     def load(self, filename="q_table"):
         """Load Q-table + metadata from .pkl (preferred)."""
@@ -336,7 +341,7 @@ class DeepQLearningAgent:
         self.optimizer = optim.Adam(self.q_net.parameters(), lr=lr)
 
         # Training stats logging
-        self.stats_file = "dqn_stats.csv"   # set to None to disable logging
+        self.stats_file = None   # set below based on config logging flag
         
         # canonical list of CSV columns we will always use
         self.stats_fields = [
@@ -360,15 +365,19 @@ class DeepQLearningAgent:
             "batch_reward_95"
         ]
 
-        # Initialize CSV file with header for training stats logging
-        self.stats_file = initialize_stats_file("dqn_stats.csv", self.stats_fields)
+        self.stats_log_every = max(1, int(config.params.get("dqn_log_every_updates", 100)))
+        self._stats_flush_every = max(1, int(config.params.get("dqn_stats_flush_every", 1000)))
+
+        # Initialize CSV only when diagnostics logging is enabled.
+        if config.params.get("logging", False):
+            self.stats_file = initialize_stats_file("dqn_stats.csv", self.stats_fields)
 
         # Diagnostics buffering to reduce I/O cost
         self._stats_buf = []                  # in-memory buffer for CSV rows
-        self._stats_flush_every = 1000         # flush to disk every N rows (adjust as needed)
 
         # Training bookkeeping
         self.steps_done = 0
+        self.learn_steps = 0
         self.games_trained = 0
 
     # -------------------------
@@ -576,6 +585,7 @@ class DeepQLearningAgent:
         # Gradient clipping to avoid exploding updates
         clip_grad_norm_(self.q_net.parameters(), max_norm=5.0)
         self.optimizer.step()
+        self.learn_steps += 1
 
         # Soft (Polyak) update of target network
         if getattr(self, "tau", None) is not None and self.tau > 0.0:
@@ -583,8 +593,9 @@ class DeepQLearningAgent:
             for param, target_param in zip(self.q_net.parameters(), self.target_net.parameters()):
                 target_param.data.copy_(tau * param.data + (1.0 - tau) * target_param.data)
 
-        # Optional diagnostics logging to CSV
-        if getattr(self, "stats_file", None):
+        # Optional diagnostics logging to CSV. We keep the same metrics, but
+        # only log every N optimizer steps to reduce Python and I/O overhead.
+        if getattr(self, "stats_file", None) and (self.learn_steps % self.stats_log_every == 0):
             try:
                 # compute avg q for batch for logging
                 avg_q = q_values.mean().item()
@@ -649,6 +660,7 @@ class DeepQLearningAgent:
             "model_state_dict": self.q_net.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
             "steps_done": self.steps_done,
+            "learn_steps": self.learn_steps,
             "games_trained": self.games_trained,
             "epsilon": self.epsilon,
             # action mapping included so loading later preserves canonical order
@@ -673,6 +685,7 @@ class DeepQLearningAgent:
                     # optimizer load can fail if device or pytorch versions differ; ignore safely
                     pass
             self.steps_done = data.get("steps_done", self.steps_done)
+            self.learn_steps = data.get("learn_steps", self.learn_steps)
             self.games_trained = data.get("games_trained", self.games_trained)
             self.epsilon = data.get("epsilon", self.epsilon)
             saved_actions = data.get("actions", None)

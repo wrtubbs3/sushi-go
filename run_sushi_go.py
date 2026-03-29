@@ -34,8 +34,9 @@ TRAINING_PLAYER = {
 }
 
 # Candidate opponents. A fresh player is created from one of these specs each
-# episode, so saved models remain unchanged and non-learning opponents do not
-# accumulate state from game to game.
+# episode, so non-learning opponents do not accumulate score/card state from
+# game to game. Learned opponents can still reuse one cached loaded agent so
+# large model files are only read from disk once per run.
 OPPONENT_POOL = [
     {"name": "Random Bot", "strategy": "random", "agent_file": None, "train": False},
     {"name": "Hierarchy Bot", "strategy": "hierarchy", "agent_file": None, "train": False},
@@ -94,6 +95,32 @@ def normalize_player_spec(spec):
         "agent": spec.get("agent"),
         "persistent": spec.get("persistent", False),
     }
+
+
+def build_cached_opponent_pool(opponent_pool):
+    """Preload any fixed learned opponents once so large files are not re-read."""
+    cached_specs = []
+    for spec in opponent_pool:
+        normalized = normalize_player_spec(spec)
+
+        # Heuristic opponents are already cheap, so keep them lightweight.
+        if normalized["strategy"] not in {"q-learning", "deep q-learning"}:
+            cached_specs.append(normalized)
+            continue
+
+        opponent_stub = Player(
+            normalized["name"],
+            normalized["strategy"],
+            normalized.get("agent_file"),
+        )
+        if opponent_stub.agent is not None:
+            opponent_stub.agent.train = normalized.get("train", False)
+            normalized["agent"] = opponent_stub.agent
+            normalized["persistent"] = True
+
+        cached_specs.append(normalized)
+
+    return cached_specs
 
 
 def sample_opponents(opponent_pool, n_opponents, rng, randomize_selection):
@@ -162,11 +189,12 @@ def collect_trainable_agents(lineup):
     return agents
 
 
-def save_agent(agent):
+def save_agent(agent, final=False):
     """Save a trainable agent to the appropriate filename base."""
     if agent.__class__.__name__ == "QLearningAgent":
         print(f"[INFO] Saving Q-learning agent to {os.path.abspath(Q_TABLE_FILENAME)}.pkl")
-        agent.save(Q_TABLE_FILENAME)
+        include_csv = config.params.get("q_table_save_csv_on_final", True) if final else config.params.get("q_table_save_csv", False)
+        agent.save(Q_TABLE_FILENAME, include_csv=include_csv)
     elif agent.__class__.__name__ == "DeepQLearningAgent":
         print(f"[INFO] Saving Deep Q agent to {os.path.abspath(DQN_FILENAME)}.pkl")
         agent.save(DQN_FILENAME)
@@ -187,6 +215,7 @@ def main():
     save_interval = config.params["save_every"]
 
     training_spec = build_persistent_training_spec(TRAINING_PLAYER)
+    cached_opponent_pool = build_cached_opponent_pool(OPPONENT_POOL)
     trainable_agents = collect_trainable_agents([training_spec])
 
     # The training player appears every episode, so this per-game log is useful
@@ -201,17 +230,18 @@ def main():
     print("[INFO] Persistent training player:")
     print(f"  {training_spec['name']} ({training_spec['strategy']}), train={training_spec['train']}")
     print("[INFO] Opponent pool:")
-    for opponent in OPPONENT_POOL:
-        print(f"  {opponent['name']} ({opponent['strategy']})")
+    for opponent in cached_opponent_pool:
+        suffix = " [cached]" if opponent.get("persistent", False) else ""
+        print(f"  {opponent['name']} ({opponent['strategy']}){suffix}")
 
     if RANDOM_SEED is not None:
         print(f"[INFO] Random seed: {RANDOM_SEED}")
 
-    first_lineup = build_episode_lineup(training_spec, OPPONENT_POOL, N_PLAYERS, rng)
+    first_lineup = build_episode_lineup(training_spec, cached_opponent_pool, N_PLAYERS, rng)
     print(f"[INFO] Example sampled lineup: {format_lineup(first_lineup)}")
 
     for i in tqdm(range(n_games)):
-        lineup = build_episode_lineup(training_spec, OPPONENT_POOL, N_PLAYERS, rng)
+        lineup = build_episode_lineup(training_spec, cached_opponent_pool, N_PLAYERS, rng)
         game = build_game_from_lineup(lineup)
         game_score = game.play_game()
 
@@ -227,13 +257,13 @@ def main():
         if (i + 1) % save_interval == 0:
             for agent in trainable_agents:
                 try:
-                    save_agent(agent)
+                    save_agent(agent, final=False)
                 except Exception as exc:
                     print(f"[ERROR] Failed to save agent {agent}: {exc}")
 
     for agent in trainable_agents:
         try:
-            save_agent(agent)
+            save_agent(agent, final=True)
         except Exception as exc:
             print(f"[ERROR] Failed final save for agent {agent}: {exc}")
 
