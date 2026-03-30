@@ -194,22 +194,37 @@ def plot_diagnostics(df, window=1, show=True):
 
     print("[INFO] Plot generation complete.")
 
-def main():
+def build_arg_parser():
     parser = argparse.ArgumentParser(description="Plot DQN diagnostics CSV")
     parser.add_argument("--file", "-f", default="dqn_stats.csv", help="CSV file path")
     parser.add_argument("--window", "-w", type=int, default=200, help="rolling window for smoothing (use 1 for raw)")
     parser.add_argument("--no-show", action="store_true", help="don't call plt.show()")
-    args = parser.parse_args()
+    return parser
+
+
+def main(file="dqn_stats.csv", window=200, show=True):
+    """Load a diagnostics CSV and generate plots.
+
+    This function is safe to import and call directly from notebooks or other
+    Python modules without tripping over command-line argument parsing.
+    """
 
     try:
-        df = load_csv(args.file)
+        df = load_csv(file)
     except Exception as e:
         print(f"Error loading CSV: {e}", file=sys.stderr)
-        sys.exit(1)
+        raise SystemExit(1) from e
 
     df = ensure_columns(df)
 
-    plot_diagnostics(df, window=args.window, show=(not args.no_show))
+    plot_diagnostics(df, window=window, show=show)
+
+
+def cli(argv=None):
+    """Command-line entrypoint."""
+    parser = build_arg_parser()
+    args = parser.parse_args(argv)
+    main(file=args.file, window=args.window, show=(not args.no_show))
 
 if __name__ == "__main__":
-    main()
+    cli()

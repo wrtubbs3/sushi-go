@@ -4,7 +4,7 @@ params = {
     "winner_bonus": 10,      # flat reward to winners
     "alpha_obs_factor": 0.2, # observation learning factor
     "algorithm": "q-learning", # ["q-learning", "monte-carlo"]
-    "logging": False,        # master switch for DQN diagnostics CSV logging
+    "logging": True,         # master switch for DQN diagnostics CSV logging
     "dqn_log_every_updates": 100,   # log one DQN diagnostics row every N optimizer steps
     "dqn_stats_flush_every": 1000,  # flush buffered DQN diagnostics rows every N logged rows
     "q_table_save_csv": False,      # periodic Q-table checkpoints skip the huge CSV by default

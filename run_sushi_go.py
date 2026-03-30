@@ -10,6 +10,7 @@ import os
 import random
 import statistics
 from collections import defaultdict
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -233,6 +234,10 @@ def main():
     for opponent in cached_opponent_pool:
         suffix = " [cached]" if opponent.get("persistent", False) else ""
         print(f"  {opponent['name']} ({opponent['strategy']}){suffix}")
+
+    if config.params.get("logging", False):
+        stats_path = Path("dqn_stats.csv").resolve()
+        print(f"[INFO] DQN diagnostics logging is ON. Stats will be written to {stats_path}")
 
     if RANDOM_SEED is not None:
         print(f"[INFO] Random seed: {RANDOM_SEED}")

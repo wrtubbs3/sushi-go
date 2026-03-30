@@ -371,6 +371,8 @@ class DeepQLearningAgent:
         # Initialize CSV only when diagnostics logging is enabled.
         if config.params.get("logging", False):
             self.stats_file = initialize_stats_file("dqn_stats.csv", self.stats_fields)
+        else:
+            print("[INFO] DQN diagnostics logging is disabled; set config.params['logging'] = True to write dqn_stats.csv.")
 
         # Diagnostics buffering to reduce I/O cost
         self._stats_buf = []                  # in-memory buffer for CSV rows
