@@ -295,25 +295,38 @@ class SushiGo:
         # --- AFTER ACTION: new points ---
         new_points = self.count_points(players)
 
-        # Update agent for each player as applicable
+        # Compute per-player incremental rewards before the pass.
+        rewards = []
         for i in range(n_players):
             player = players[i]
             state_dict, actions_dict, chosen_action = actions_taken[i][1], actions_taken[i][2], actions_taken[i][3]
             reward = (new_points[i] - old_points[i])   # incremental reward
+            rewards.append(reward)
 
-            # Construct next state dictionary
-            next_state_dict = build_state_dict(player.cards_in_hand, player.cards_on_table)         
+            # Track remaining cards to pass left
+            cards_passed_left.append(cards_in_hand[i])
 
-            # Construct dictionary of possible actions from next state
+        # Pass remaining cards to the left
+        for i in range(n_players):
+            if i == 0:
+                players[0].cards_in_hand = cards_in_hand[-1]
+            else:
+                players[i].cards_in_hand = cards_in_hand[i-1]
+
+        # Update agents using the true next decision state: the post-pass hand.
+        for i in range(n_players):
+            player = players[i]
+            state_dict, actions_dict, chosen_action = actions_taken[i][1], actions_taken[i][2], actions_taken[i][3]
+            reward = rewards[i]
+
+            next_state_dict = build_state_dict(player.cards_in_hand, player.cards_on_table)
             next_actions_dict = build_actions_dict(next_state_dict)
 
-            # --- SELF UPDATE ---
             if player.strategy == "q-learning" and player.agent is not None:
                 player.agent.update(reward, next_state_dict, next_actions_dict)
             elif player.strategy == "deep q-learning" and player.agent is not None:
                 player.agent.update(reward, next_state_dict, next_actions_dict)
 
-            # --- OBSERVATION UPDATES ---
             if observation_learning_enabled and chosen_action is not None:
                 for other_player in players:
                     if other_player is not player and other_player.agent is not None:
@@ -334,16 +347,6 @@ class SushiGo:
                                 next_state_dict=next_state_dict,
                                 next_actions_dict=next_actions_dict
                             )
-
-            # Track remaining cards to pass left
-            cards_passed_left.append(cards_in_hand[i])
-
-        # Pass remaining cards to the left
-        for i in range(n_players):
-            if i == 0:
-                players[0].cards_in_hand = cards_in_hand[-1]
-            else:
-                players[i].cards_in_hand = cards_in_hand[i-1]
         
         return players
     
@@ -477,11 +480,7 @@ class SushiGo:
             action = player.agent.step(state_dict, actions_dict)
 
             # Map chosen action back to card index
-            card_to_keep_idx = 0
-            for i, c in enumerate(cards_in_hand):
-                if action.endswith(c.type):  # match "play_tempura" to card.type == "tempura"
-                    card_to_keep_idx = i
-                    break
+            card_to_keep_idx = self.map_action_to_card_index(cards_in_hand, action)
 
         elif strategy == "deep q-learning":
             # Construct current state dictionary
@@ -494,14 +493,49 @@ class SushiGo:
             action = player.agent.step(state_dict, actions_dict)
 
             # Map chosen action back to card index
-            card_to_keep_idx = 0
-            for i, c in enumerate(cards_in_hand):
-                if action.endswith(c.type):  # e.g., "play_tempura" matches card.type == "tempura"
-                    card_to_keep_idx = i
-                    break
+            card_to_keep_idx = self.map_action_to_card_index(cards_in_hand, action)
 
         else: # default
             card_to_keep_idx = 0
 
         return card_to_keep_idx
+
+    def map_action_to_card_index(self, cards_in_hand, action):
+        """Map an abstract action name to a concrete card index in the current hand."""
+        if not cards_in_hand:
+            return 0
+
+        if action == "play_highest_nigiri":
+            best_idx = None
+            best_subtype = -1
+            for i, card in enumerate(cards_in_hand):
+                if card.type == "nigiri" and card.subtype > best_subtype:
+                    best_idx = i
+                    best_subtype = card.subtype
+            return best_idx if best_idx is not None else 0
+
+        if action == "play_highest_maki":
+            best_idx = None
+            best_subtype = -1
+            for i, card in enumerate(cards_in_hand):
+                if card.type == "maki" and card.subtype > best_subtype:
+                    best_idx = i
+                    best_subtype = card.subtype
+            return best_idx if best_idx is not None else 0
+
+        action_to_type = {
+            "play_wasabi": "wasabi",
+            "play_tempura": "tempura",
+            "play_sashimi": "sashimi",
+            "play_dumpling": "dumpling",
+            "play_pudding": "pudding",
+            "play_chopsticks": "chopsticks",
+        }
+        target_type = action_to_type.get(action)
+        if target_type is not None:
+            for i, card in enumerate(cards_in_hand):
+                if card.type == target_type:
+                    return i
+
+        return 0
     

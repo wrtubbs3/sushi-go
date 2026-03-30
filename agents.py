@@ -297,7 +297,7 @@ class QNetwork(nn.Module):
         return self.net(x)
 
 
-Transition = namedtuple("Transition", ["state", "action", "reward", "next_state", "done"])
+Transition = namedtuple("Transition", ["state", "action", "reward", "next_state", "next_action_mask", "done"])
 
 
 class DeepQLearningAgent:
@@ -430,6 +430,17 @@ class DeepQLearningAgent:
         ], dtype=np.float32)
         return torch.tensor(state_vec, dtype=torch.float32, device=self.device)
 
+    def _actions_dict_to_mask(self, actions_dict):
+        """Convert an action-availability dict into a canonical boolean mask."""
+        mask = torch.zeros(self.action_dim, dtype=torch.bool)
+        if actions_dict is None:
+            return mask
+
+        for action_name, is_valid in actions_dict.items():
+            if is_valid and action_name in self.action_to_index:
+                mask[self.action_to_index[action_name]] = True
+        return mask
+
     # -------------------------
     # Action selection
     # -------------------------
@@ -482,10 +493,12 @@ class DeepQLearningAgent:
             # if no previous stored state/action, skip (happens at beginning)
             return
 
+        next_action_mask = self._actions_dict_to_mask(actions_dict)
         transition = Transition(self.prev_state.squeeze(0).cpu(),  # store on cpu to reduce GPU memory pressure
                                 self.prev_action,
                                 float(reward),
                                 next_state.cpu(),
+                                next_action_mask.cpu(),
                                 bool(done))
         self.memory.append(transition)
         self.last_state = transition.state
@@ -540,7 +553,8 @@ class DeepQLearningAgent:
         done = not any(next_actions_dict.values()) if next_actions_dict is not None else False
 
         # Append an observed transition to replay buffer
-        transition = Transition(state, action_idx, reward, next_state, bool(done))
+        next_action_mask = self._actions_dict_to_mask(next_actions_dict)
+        transition = Transition(state, action_idx, reward, next_state, next_action_mask, bool(done))
         self.memory.append(transition)
 
         # Only learn after we have a reasonable buffer size (avoid overfitting to tiny buffer)
@@ -562,6 +576,7 @@ class DeepQLearningAgent:
             int(self.last_action),
             float(reward),
             terminal_next_state,
+            torch.zeros(self.action_dim, dtype=torch.bool),
             True,
         )
         self.memory.append(transition)
@@ -590,6 +605,7 @@ class DeepQLearningAgent:
         actions = torch.tensor(batch.action, dtype=torch.int64, device=self.device).unsqueeze(1)   # [batch, 1]
         rewards = torch.tensor(batch.reward, dtype=torch.float32, device=self.device).unsqueeze(1)
         next_states = torch.stack(batch.next_state).to(self.device)
+        next_action_masks = torch.stack(batch.next_action_mask).to(self.device)
         dones = torch.tensor([1.0 if d else 0.0 for d in batch.done], dtype=torch.float32, device=self.device).unsqueeze(1)
 
         # Q(s,a) for taken actions
@@ -597,10 +613,16 @@ class DeepQLearningAgent:
 
         # Double DQN target computation
         with torch.no_grad():
-            # choose best actions according to online network
-            next_action_idxs = self.q_net(next_states).argmax(dim=1, keepdim=True)        # [batch,1]
-            # evaluate them using the target network
-            max_next_q = self.target_net(next_states).gather(1, next_action_idxs)        # [batch,1]
+            online_next_q = self.q_net(next_states)
+            masked_online_next_q = online_next_q.masked_fill(~next_action_masks, float("-inf"))
+            has_valid_next_action = next_action_masks.any(dim=1, keepdim=True)
+
+            # Choose best legal actions according to the online network.
+            next_action_idxs = masked_online_next_q.argmax(dim=1, keepdim=True)        # [batch,1]
+
+            # Evaluate the chosen legal actions using the target network.
+            target_next_q = self.target_net(next_states).gather(1, next_action_idxs)   # [batch,1]
+            max_next_q = torch.where(has_valid_next_action, target_next_q, torch.zeros_like(target_next_q))
             q_targets = rewards + self.gamma * (1.0 - dones) * max_next_q
 
         # Use Huber (SmoothL1) loss for robustness to outliers
