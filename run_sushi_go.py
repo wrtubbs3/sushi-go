@@ -237,6 +237,7 @@ def main():
     training_score_log = []
     training_win_log = []
     training_terminal_reward_log = []
+    strategy_score_log = defaultdict(list)
 
     # Aggregate score distributions by participant name and by strategy. Opponents
     # may appear in only a subset of games, so we track counts separately.
@@ -264,10 +265,12 @@ def main():
         lineup = build_episode_lineup(training_spec, cached_opponent_pool, N_PLAYERS, rng)
         game = build_game_from_lineup(lineup)
         game_score = game.play_game()
+        per_game_strategy_scores = defaultdict(list)
 
         for spec, score in zip(lineup, game_score):
             scores_by_name[spec["name"]].append(score)
             scores_by_strategy[spec["strategy"]].append(score)
+            per_game_strategy_scores[spec["strategy"]].append(score)
             if spec["name"] == training_spec["name"]:
                 training_score_log.append(score)
                 best_opponent_score = max(
@@ -278,6 +281,9 @@ def main():
                 terminal_reward = config.params.get("terminal_margin_scale", 1.0) * (score - best_opponent_score)
                 training_terminal_reward_log.append(terminal_reward)
                 training_win_log.append(1.0 if score >= max(game_score) else 0.0)
+
+        for strategy, game_scores in per_game_strategy_scores.items():
+            strategy_score_log[strategy].append(float(np.mean(game_scores)))
 
         for agent in trainable_agents:
             agent.games_trained += 1
@@ -324,9 +330,18 @@ def main():
 
     plt.plot(range(1, len(raw_scores) + 1), raw_scores, alpha=0.2, label=f"{training_spec['name']} (raw)")
     plt.plot(range(1, len(raw_scores) + 1), smoothed, label=f"{training_spec['name']} (avg)")
+    for strategy, raw_strategy_scores in sorted(strategy_score_log.items()):
+        strategy_avg = running_average(raw_strategy_scores, window)
+        plt.plot(
+            range(1, len(strategy_avg) + 1),
+            strategy_avg,
+            alpha=0.9,
+            linewidth=1.8,
+            label=f"{strategy} (strategy avg)",
+        )
     plt.xlabel("Game Number")
     plt.ylabel("Score")
-    plt.title("Sushi Go Training Player Scores")
+    plt.title("Sushi Go Training Player and Strategy Scores")
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
