@@ -1,3 +1,4 @@
+import config
 from agents import QLearningAgent, DeepQLearningAgent
 
 class Player:
@@ -27,7 +28,12 @@ class Player:
 
         # If applicable, determine agent
         if self.strategy == "q-learning":
-            self.agent = QLearningAgent(alpha=0.1, gamma=0.9, epsilon=0.2)
+            q_config = config.params.get("q_learning", {})
+            self.agent = QLearningAgent(
+                alpha=q_config.get("alpha", 0.1),
+                gamma=q_config.get("gamma", 0.9),
+                epsilon=q_config.get("epsilon", 0.2),
+            )
 
             # Load Q-table if provided
             if q_table_file is not None:
@@ -39,7 +45,21 @@ class Player:
 
         elif self.strategy == "deep q-learning":
             # Instantiate a deep Q-learning agent
-            self.agent = DeepQLearningAgent()
+            dqn_config = config.params.get("dqn", {})
+            self.agent = DeepQLearningAgent(
+                hidden=dqn_config.get("hidden", 128),
+                gamma=dqn_config.get("gamma", 0.99),
+                lr=dqn_config.get("lr", 1e-5),
+                epsilon=dqn_config.get("epsilon", 0.1),
+                epsilon_decay=dqn_config.get("epsilon_decay", 0.99999),
+                epsilon_min=dqn_config.get("epsilon_min", 0.01),
+                buffer_size=dqn_config.get("buffer_size", 50000),
+                batch_size=dqn_config.get("batch_size", 64),
+                target_update=dqn_config.get("target_update", 5000),
+                tau=dqn_config.get("tau", 0.005),
+                min_replay_size=dqn_config.get("min_replay_size"),
+                device=dqn_config.get("device"),
+            )
 
             # Load agent file if provided
             if q_table_file is not None:

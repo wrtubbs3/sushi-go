@@ -286,7 +286,7 @@ Transition = namedtuple("Transition", ["state", "action", "reward", "next_state"
 class DeepQLearningAgent:
     def __init__(self, state_dim=None, action_dim=None, gamma=0.99, lr=1e-5, epsilon=0.1, epsilon_decay = 0.99999,
                  epsilon_min = 0.01, train=True, buffer_size=50000, batch_size=64, target_update=5000, tau=0.005,
-                 min_replay_size=None, device=None):
+                 min_replay_size=None, device=None, hidden=128):
         """
         Deep Q-Learning agent with explicit, canonical action->index mapping to avoid
         action-order mismatches between the network and environment.
@@ -301,6 +301,7 @@ class DeepQLearningAgent:
         - tau: Polyak averaging factor
         - min_replay_size: how many transitions before learning starts (defaults to max(10000, batch_size)).
         - device: torch device to use (cpu by default).
+        - hidden: hidden layer width for the Q-network.
         """
         self.gamma = gamma
         self.epsilon = epsilon
@@ -333,8 +334,8 @@ class DeepQLearningAgent:
         self.min_replay_size = min_replay_size if min_replay_size is not None else max(10000, batch_size)
 
         # Networks
-        self.q_net = QNetwork(self.state_dim, self.action_dim).to(self.device)
-        self.target_net = QNetwork(self.state_dim, self.action_dim).to(self.device)
+        self.q_net = QNetwork(self.state_dim, self.action_dim, hidden=hidden).to(self.device)
+        self.target_net = QNetwork(self.state_dim, self.action_dim, hidden=hidden).to(self.device)
         self.target_net.load_state_dict(self.q_net.state_dict())
         self.target_net.eval()
 

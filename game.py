@@ -96,8 +96,9 @@ class SushiGo:
         winners = [i for i, pts in enumerate(final_points) if pts == max_points]
 
         # Config parameters
-        winner_bonus = getattr(config.params, "winner_bonus", 10)
-        alpha_obs_factor = getattr(config.params, "alpha_obs_factor", 0.2)
+        winner_bonus = config.params.get("winner_bonus", 10)
+        alpha_obs_factor = config.params.get("alpha_obs_factor", 0.2)
+        observation_learning_enabled = config.params.get("enable_observation_learning", False)
 
         for i, player in enumerate(self.players):
             if player.strategy == "q-learning" and player.agent is not None:
@@ -117,19 +118,20 @@ class SushiGo:
                 )
 
                 # Observational updates for other Q-learning players
-                for j, other_player in enumerate(self.players):
-                    if j == i:
-                        continue
-                    if other_player.strategy == "q-learning" and other_player.agent is not None:
-                        observed_reward = winner_bonus if j in winners else 0
-                        other_player.agent.update_from_observation(
-                            state_dict=next_state_dict,
-                            action=None,  # terminal observation
-                            reward=observed_reward,
-                            next_state_dict=next_state_dict,
-                            next_actions_dict=next_actions_dict,
-                            alpha_obs=other_player.agent.alpha * alpha_obs_factor
-                        )
+                if observation_learning_enabled:
+                    for j, other_player in enumerate(self.players):
+                        if j == i:
+                            continue
+                        if other_player.strategy == "q-learning" and other_player.agent is not None:
+                            observed_reward = winner_bonus if j in winners else 0
+                            other_player.agent.update_from_observation(
+                                state_dict=next_state_dict,
+                                action=None,  # terminal observation
+                                reward=observed_reward,
+                                next_state_dict=next_state_dict,
+                                next_actions_dict=next_actions_dict,
+                                alpha_obs=other_player.agent.alpha * alpha_obs_factor
+                            )
 
         # Create list of each player's points total, and reset player points to zero for next game
         total_points = []
@@ -278,6 +280,8 @@ class SushiGo:
     
     def play_hand(self, players):
         n_players = len(players)
+        observation_learning_enabled = config.params.get("enable_observation_learning", False)
+        alpha_obs_factor = config.params.get("alpha_obs_factor", 0.2)
 
         # --- BEFORE ACTION: points baseline ---
         old_points = self.count_points(players)
@@ -341,7 +345,7 @@ class SushiGo:
                 player.agent.update(reward, next_state_dict, next_actions_dict)
 
             # --- OBSERVATION UPDATES ---
-            if chosen_action is not None:
+            if observation_learning_enabled and chosen_action is not None:
                 for other_player in players:
                     if other_player is not player and other_player.agent is not None:
                         if other_player.strategy == "q-learning":
@@ -351,7 +355,7 @@ class SushiGo:
                                 reward=reward,
                                 next_state_dict=next_state_dict,
                                 next_actions_dict=next_actions_dict,
-                                alpha_obs=other_player.agent.alpha * 0.2  # smaller learning rate for observers
+                                alpha_obs=other_player.agent.alpha * alpha_obs_factor
                             )
                         elif other_player.strategy == "deep q-learning":
                             other_player.agent.update_from_observation(
