@@ -88,50 +88,19 @@ class SushiGo:
                 self.players[i].cards_in_hand = []
                 self.players[i].cards_on_table = []
         
-        # --- END OF GAME BONUS UPDATE ---
-
-        # Compute winners
+        # --- END OF GAME TERMINAL REWARD UPDATE ---
         final_points = [p.points for p in self.players]
-        max_points = max(final_points)
-        winners = [i for i, pts in enumerate(final_points) if pts == max_points]
 
         # Config parameters
-        winner_bonus = config.params.get("winner_bonus", 10)
-        alpha_obs_factor = config.params.get("alpha_obs_factor", 0.2)
-        observation_learning_enabled = config.params.get("enable_observation_learning", False)
+        terminal_margin_scale = config.params.get("terminal_margin_scale", 1.0)
 
         for i, player in enumerate(self.players):
-            if player.strategy == "q-learning" and player.agent is not None:
-                # Terminal next state (no cards left, no valid actions)
-                next_state_dict = {"cards_in_hand": 0}
-                next_actions_dict = {a: False for a in player.agent.actions}
-
-                # Assign reward
-                final_reward = winner_bonus if i in winners else 0
-
-                # Full update for this player's own final reward
-                player.agent.update(
-                    reward=final_reward,
-                    state_dict=next_state_dict,
-                    actions_dict=next_actions_dict,
-                    done=True
+            if player.agent is not None and player.strategy in {"q-learning", "deep q-learning"}:
+                best_opponent_score = max(
+                    score for j, score in enumerate(final_points) if j != i
                 )
-
-                # Observational updates for other Q-learning players
-                if observation_learning_enabled:
-                    for j, other_player in enumerate(self.players):
-                        if j == i:
-                            continue
-                        if other_player.strategy == "q-learning" and other_player.agent is not None:
-                            observed_reward = winner_bonus if j in winners else 0
-                            other_player.agent.update_from_observation(
-                                state_dict=next_state_dict,
-                                action=None,  # terminal observation
-                                reward=observed_reward,
-                                next_state_dict=next_state_dict,
-                                next_actions_dict=next_actions_dict,
-                                alpha_obs=other_player.agent.alpha * alpha_obs_factor
-                            )
+                final_reward = terminal_margin_scale * (final_points[i] - best_opponent_score)
+                player.agent.apply_terminal_reward(final_reward)
 
         # Create list of each player's points total, and reset player points to zero for next game
         total_points = []

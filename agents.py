@@ -75,6 +75,8 @@ class QLearningAgent:
         # Track last state/action for updates
         self.prev_state = None
         self.prev_action = None
+        self.last_state = None
+        self.last_action = None
 
         # Track training progress
         self.games_trained = 0
@@ -179,8 +181,23 @@ class QLearningAgent:
         new_q = old_q + self.alpha * (reward + self.gamma * max_future_q - old_q)
         self.set_q(self.prev_state, self.prev_action, new_q)
 
+        # Keep the most recent decision available for a terminal reward update.
+        self.last_state = self.prev_state
+        self.last_action = self.prev_action
+
         # Reset previous state/action
         self.prev_state, self.prev_action = None, None
+
+    def apply_terminal_reward(self, reward):
+        """Apply an additional terminal-only reward to the most recent action."""
+        if not self.train:
+            return
+        if self.last_state is None or self.last_action is None:
+            return
+
+        old_q = self.get_q(self.last_state, self.last_action)
+        new_q = old_q + self.alpha * (reward - old_q)
+        self.set_q(self.last_state, self.last_action, new_q)
 
     def update_from_observation(self, state_dict, action, reward, next_state_dict, next_actions_dict, alpha_obs=None):
         """
@@ -382,6 +399,8 @@ class DeepQLearningAgent:
         self.steps_done = 0
         self.learn_steps = 0
         self.games_trained = 0
+        self.last_state = None
+        self.last_action = None
 
     # -------------------------
     # State helpers
@@ -469,6 +488,8 @@ class DeepQLearningAgent:
                                 next_state.cpu(),
                                 bool(done))
         self.memory.append(transition)
+        self.last_state = transition.state
+        self.last_action = transition.action
 
         self.steps_done += 1
         # Only learn after we have a reasonable buffer size (avoid overfitting to tiny buffer)
@@ -527,6 +548,33 @@ class DeepQLearningAgent:
             self.learn()
 
         return
+
+    def apply_terminal_reward(self, reward):
+        """Append a terminal transition carrying an end-of-game reward."""
+        if not self.train:
+            return
+        if self.last_state is None or self.last_action is None:
+            return
+
+        terminal_next_state = torch.zeros(self.state_dim, dtype=torch.float32)
+        transition = Transition(
+            self.last_state.clone(),
+            int(self.last_action),
+            float(reward),
+            terminal_next_state,
+            True,
+        )
+        self.memory.append(transition)
+
+        self.steps_done += 1
+        if len(self.memory) >= max(self.batch_size, self.min_replay_size):
+            self.learn()
+
+        if self.target_update and (self.steps_done % self.target_update == 0):
+            try:
+                self.target_net.load_state_dict(self.q_net.state_dict())
+            except Exception:
+                pass
 
     # -------------------------
     # Training step

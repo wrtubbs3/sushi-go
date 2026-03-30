@@ -206,6 +206,19 @@ def format_lineup(lineup):
     return " | ".join(f"{spec['name']} ({spec['strategy']})" for spec in lineup)
 
 
+def running_average(values, window):
+    """Simple trailing running average with min_periods=1 behavior."""
+    values = np.asarray(values, dtype=float)
+    if values.size == 0:
+        return values
+    window = max(1, int(window))
+    averaged = np.empty(values.size, dtype=float)
+    for idx in range(values.size):
+        start = max(0, idx - window + 1)
+        averaged[idx] = values[start : idx + 1].mean()
+    return averaged
+
+
 def main():
     """Run training/evaluation across many sampled Sushi Go games."""
     if not 2 <= N_PLAYERS <= 5:
@@ -222,6 +235,8 @@ def main():
     # The training player appears every episode, so this per-game log is useful
     # for a learning curve even when seat order changes.
     training_score_log = []
+    training_win_log = []
+    training_terminal_reward_log = []
 
     # Aggregate score distributions by participant name and by strategy. Opponents
     # may appear in only a subset of games, so we track counts separately.
@@ -255,6 +270,14 @@ def main():
             scores_by_strategy[spec["strategy"]].append(score)
             if spec["name"] == training_spec["name"]:
                 training_score_log.append(score)
+                best_opponent_score = max(
+                    other_score
+                    for other_spec, other_score in zip(lineup, game_score)
+                    if other_spec["name"] != training_spec["name"]
+                )
+                terminal_reward = config.params.get("terminal_margin_scale", 1.0) * (score - best_opponent_score)
+                training_terminal_reward_log.append(terminal_reward)
+                training_win_log.append(1.0 if score >= max(game_score) else 0.0)
 
         for agent in trainable_agents:
             agent.games_trained += 1
@@ -294,13 +317,13 @@ def main():
 
     # Plot only the persistent training player's scores. This remains meaningful
     # even when opponents and seat order vary from one episode to the next.
-    plt.figure(figsize=(12, 6))
+    fig_scores = plt.figure(figsize=(12, 6))
     raw_scores = np.array(training_score_log)
     window = max(1, int(len(raw_scores) / 100))
-    smoothed = np.convolve(raw_scores, np.ones(window) / window, mode="valid")
+    smoothed = running_average(raw_scores, window)
 
     plt.plot(range(1, len(raw_scores) + 1), raw_scores, alpha=0.2, label=f"{training_spec['name']} (raw)")
-    plt.plot(range(window, len(raw_scores) + 1), smoothed, label=f"{training_spec['name']} (avg)")
+    plt.plot(range(1, len(raw_scores) + 1), smoothed, label=f"{training_spec['name']} (avg)")
     plt.xlabel("Game Number")
     plt.ylabel("Score")
     plt.title("Sushi Go Training Player Scores")
@@ -308,12 +331,42 @@ def main():
     plt.grid(True)
     plt.tight_layout()
 
+    fig_outcomes = plt.figure(figsize=(12, 8))
+    win_rate = 100.0 * running_average(training_win_log, window)
+    terminal_reward_avg = running_average(training_terminal_reward_log, window)
+
+    plt.subplot(2, 1, 1)
+    plt.plot(range(1, len(win_rate) + 1), win_rate, color="C2", label="win rate")
+    plt.xlabel("Game Number")
+    plt.ylabel("Win Rate (%)")
+    plt.title("Sushi Go Training Player Win Rate")
+    plt.ylim(0, 100)
+    plt.legend()
+    plt.grid(True)
+
+    plt.subplot(2, 1, 2)
+    plt.plot(
+        range(1, len(terminal_reward_avg) + 1),
+        terminal_reward_avg,
+        color="C3",
+        label="terminal reward avg",
+    )
+    plt.xlabel("Game Number")
+    plt.ylabel("Terminal Reward")
+    plt.title("Sushi Go Training Player Terminal Reward")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"sushi_go_training_{timestamp}.png"
-    plt.savefig(filename, dpi=300)
+    filename_scores = f"sushi_go_training_scores_{timestamp}.png"
+    filename_outcomes = f"sushi_go_training_outcomes_{timestamp}.png"
+    fig_scores.savefig(filename_scores, dpi=300)
+    fig_outcomes.savefig(filename_outcomes, dpi=300)
     plt.show()
 
-    print(f"[INFO] Plot saved as {filename}")
+    print(f"[INFO] Score plot saved as {filename_scores}")
+    print(f"[INFO] Outcome plot saved as {filename_outcomes}")
 
 
 if __name__ == "__main__":

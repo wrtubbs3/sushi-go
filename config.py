@@ -5,8 +5,9 @@ params = {
     # Save trainable agents every N games during a run.
     "save_every": int(1e3),
 
-    # Extra terminal reward given to the winner(s) of a game.
-    "winner_bonus": 10,
+    # Multiplier applied to terminal margin reward:
+    # terminal_reward = terminal_margin_scale * (own_score - best_opponent_score)
+    "terminal_margin_scale": 1.0,
 
     # When True, agents also learn from other players' observed transitions.
     # This increases training signal but can slow runs down substantially.
