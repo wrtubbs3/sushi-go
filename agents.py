@@ -119,8 +119,33 @@ class QLearningAgent:
             self.q[(state, action)] = 0.0
         return self.q[(state, action)]
 
+    def peek_q(self, state, action):
+        return self.q.get((state, action), 0.0)
+
     def set_q(self, state, action, value):
         self.q[(state, action)] = value
+
+    def evaluate_actions(self, state_dict, actions_dict):
+        """Return legal actions mapped to their current Q-values without mutating the table."""
+        state = self._state_to_tuple(state_dict)
+        return {
+            action: float(self.peek_q(state, action))
+            for action in self.actions
+            if actions_dict.get(action, False)
+        }
+
+    def recommend_action(self, state_dict, actions_dict, break_ties_random=True):
+        """Return the greedy action and the per-action value map for the given state."""
+        action_values = self.evaluate_actions(state_dict, actions_dict)
+        if not action_values:
+            return None, {}
+
+        ranked_actions = list(action_values.items())
+        if break_ties_random:
+            random.shuffle(ranked_actions)
+
+        action = max(ranked_actions, key=lambda item: item[1])[0]
+        return action, action_values
 
     # -------------------------
     # Action selection
@@ -134,22 +159,19 @@ class QLearningAgent:
         possible_actions = [a for a, ok in actions_dict.items() if ok]
 
         if not possible_actions:
-            return random.choice(self.actions)  # fallback
+            action = random.choice(self.actions)
+            self.prev_state = state
+            self.prev_action = action
+            return action
 
         if not self.train:
-            # On-policy: always pick the best action
-            q_vals = [(a, self.get_q(state, a)) for a in possible_actions]
-            random.shuffle(q_vals)  # break ties randomly
-            action = max(q_vals, key=lambda x: x[1])[0]
-            return action
+            action, _ = self.recommend_action(state_dict, actions_dict, break_ties_random=True)
         else:
             # Training: epsilon-greedy
             if random.random() < self.epsilon:
                 action = random.choice(possible_actions)
             else:
-                q_vals = [(a, self.get_q(state, a)) for a in possible_actions]
-                random.shuffle(q_vals)  # break ties randomly
-                action = max(q_vals, key=lambda x: x[1])[0]
+                action, _ = self.recommend_action(state_dict, actions_dict, break_ties_random=True)
 
         # Store for update
         self.prev_state = state
@@ -386,8 +408,8 @@ class DeepQLearningAgent:
         self.stats_log_every = max(1, int(config.params.get("dqn_log_every_updates", 100)))
         self._stats_flush_every = max(1, int(config.params.get("dqn_stats_flush_every", 1000)))
 
-        # Initialize CSV only when diagnostics logging is enabled.
-        if config.params.get("logging", False):
+        # Initialize CSV only when diagnostics logging is enabled for a training agent.
+        if self.train and config.params.get("logging", False):
             self.stats_file = initialize_stats_file("dqn_stats.csv", self.stats_fields)
         else:
             print("[INFO] DQN diagnostics logging is disabled; set config.params['logging'] = True to write dqn_stats.csv.")
@@ -399,6 +421,8 @@ class DeepQLearningAgent:
         self.steps_done = 0
         self.learn_steps = 0
         self.games_trained = 0
+        self.prev_state = None
+        self.prev_action = None
         self.last_state = None
         self.last_action = None
 
@@ -441,6 +465,30 @@ class DeepQLearningAgent:
                 mask[self.action_to_index[action_name]] = True
         return mask
 
+    def evaluate_actions(self, state_dict, actions_dict):
+        """Return legal actions mapped to their current Q-values."""
+        valid_actions = [action for action in self.actions if actions_dict.get(action, False)]
+        if not valid_actions:
+            return {}
+
+        state = self._state_to_vector(state_dict).unsqueeze(0)
+        with torch.no_grad():
+            q_values = self.q_net(state).squeeze(0).detach().cpu().numpy()
+
+        return {
+            action: float(q_values[self.action_to_index[action]])
+            for action in valid_actions
+        }
+
+    def recommend_action(self, state_dict, actions_dict):
+        """Return the greedy legal action and the per-action value map for the given state."""
+        action_values = self.evaluate_actions(state_dict, actions_dict)
+        if not action_values:
+            return None, {}
+
+        action = max(action_values.items(), key=lambda item: item[1])[0]
+        return action, action_values
+
     # -------------------------
     # Action selection
     # -------------------------
@@ -462,15 +510,12 @@ class DeepQLearningAgent:
             if self.train and random.random() < self.epsilon:
                 chosen_idx = random.choice(valid_actions)
             else:
-                with torch.no_grad():
-                    q_values = self.q_net(state).squeeze(0)  # shape [action_dim]
-                    # mask out invalid action indices by setting them to -inf so argmax never picks them
-                    mask = torch.full_like(q_values, float("-inf"))
-                    mask[valid_actions] = 0.0
-                    chosen_idx = torch.argmax(q_values + mask).item()
+                action, _ = self.recommend_action(state_dict, actions_dict)
+                chosen_idx = self.action_to_index[action]
 
         # Decay epsilon
-        self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
+        if self.train:
+            self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
 
         # Store last state/action for the environment -> update call
         # keep the state tensor (not moved to numpy) so transitions can be stacked later
