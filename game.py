@@ -233,6 +233,17 @@ class SushiGo:
         """Count points, update totals, and clear the table in preparation for the next hand."""
         points_on_table = self.count_points(self.players)
         player_summaries = []
+        table_snapshot = [
+            {
+                "player_index": i,
+                "name": player.name,
+                "strategy": player.strategy,
+                "cards_in_hand": list(player.cards_in_hand),
+                "cards_on_table": list(player.cards_on_table),
+                "points_before_hand_score": player.points,
+            }
+            for i, player in enumerate(self.players)
+        ]
 
         for i, player in enumerate(self.players):
             player.points += points_on_table[i]
@@ -252,6 +263,7 @@ class SushiGo:
             "points_earned": points_on_table,
             "totals": [player.points for player in self.players],
             "players": player_summaries,
+            "table_snapshot": table_snapshot,
         }
         return self.last_hand_summary
 

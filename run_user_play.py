@@ -58,7 +58,7 @@ class UserPlayApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Sushi Go User Play")
-        self.root.geometry("1280x900")
+        self.set_initial_window_size()
 
         # User-play mode is always inference-only.
         config.params["logging"] = False
@@ -79,9 +79,18 @@ class UserPlayApp:
         self.opponent_rows = []
 
         self.status_var = tk.StringVar(value="Choose a setup to begin.")
-        self.recommendation_var = tk.StringVar(value="No recommendation available yet.")
+        self.seating_var = tk.StringVar(value="")
+        self.completed_hand_snapshot = None
 
         self.show_setup_screen()
+
+    def set_initial_window_size(self):
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        width = min(1280, max(1000, screen_width - 120))
+        height = min(900, max(700, screen_height - 140))
+        self.root.geometry(f"{width}x{height}")
+        self.root.minsize(980, 680)
 
     def load_settings(self):
         if not SETTINGS_PATH.exists():
@@ -387,28 +396,69 @@ class UserPlayApp:
         self.game_frame = ttk.Frame(self.root, padding=16)
         self.game_frame.pack(fill="both", expand=True)
 
-        header_frame = ttk.Frame(self.game_frame)
-        header_frame.pack(fill="x", pady=(0, 12))
+        canvas_container = ttk.Frame(self.game_frame)
+        canvas_container.pack(fill="both", expand=True)
 
-        ttk.Label(header_frame, textvariable=self.status_var, font=("Segoe UI", 13, "bold")).pack(anchor="w")
-        ttk.Label(header_frame, textvariable=self.recommendation_var, justify="left", wraplength=1100).pack(
-            anchor="w",
-            pady=(6, 0),
+        self.game_canvas = tk.Canvas(canvas_container, highlightthickness=0)
+        self.game_canvas.pack(side="left", fill="both", expand=True)
+
+        scrollbar = ttk.Scrollbar(canvas_container, orient="vertical", command=self.game_canvas.yview)
+        scrollbar.pack(side="right", fill="y")
+        self.game_canvas.configure(yscrollcommand=scrollbar.set)
+
+        self.scrollable_game_frame = ttk.Frame(self.game_canvas)
+        self.game_canvas_window = self.game_canvas.create_window(
+            (0, 0),
+            window=self.scrollable_game_frame,
+            anchor="nw",
         )
 
-        ttk.Button(header_frame, text="Return to Setup", command=self.return_to_setup).pack(anchor="e", pady=(8, 0))
+        self.scrollable_game_frame.bind("<Configure>", self.update_game_canvas_scrollregion)
+        self.game_canvas.bind("<Configure>", self.update_game_canvas_width)
+        self.game_canvas.bind_all("<MouseWheel>", self.handle_mousewheel)
 
-        self.opponents_frame = ttk.Frame(self.game_frame)
-        self.opponents_frame.pack(fill="both", expand=True)
+        header_frame = ttk.Frame(self.scrollable_game_frame)
+        header_frame.pack(fill="x", pady=(0, 8))
 
-        self.human_frame = ttk.LabelFrame(self.game_frame, text="Your Area", padding=12)
+        header_top_row = ttk.Frame(header_frame)
+        header_top_row.pack(fill="x")
+        ttk.Label(header_top_row, textvariable=self.status_var, font=("Segoe UI", 13, "bold")).pack(side="left")
+        ttk.Button(header_top_row, text="Quit", command=self.root.destroy).pack(side="right")
+        ttk.Button(header_top_row, text="Return to Setup", command=self.return_to_setup).pack(side="right", padx=(0, 8))
+
+        ttk.Label(
+            header_frame,
+            textvariable=self.seating_var,
+            justify="left",
+            wraplength=1080,
+        ).pack(anchor="w", pady=(4, 0))
+
+        self.seat_map_frame = ttk.LabelFrame(self.scrollable_game_frame, text="Table View", padding=12)
+        self.seat_map_frame.pack(fill="x", expand=True)
+        for column in range(12):
+            self.seat_map_frame.columnconfigure(column, weight=1)
+
+        self.human_frame = ttk.LabelFrame(self.scrollable_game_frame, text="Your Hand", padding=12)
         self.human_frame.pack(fill="x", pady=(12, 0))
 
-        self.human_table_frame = ttk.Frame(self.human_frame)
-        self.human_table_frame.pack(fill="x", pady=(0, 10))
+        self.human_status_frame = ttk.Frame(self.human_frame)
+        self.human_status_frame.pack(fill="x", pady=(0, 8))
 
         self.human_hand_frame = ttk.Frame(self.human_frame)
         self.human_hand_frame.pack(fill="x")
+
+    def update_game_canvas_scrollregion(self, _event=None):
+        if hasattr(self, "game_canvas"):
+            self.game_canvas.configure(scrollregion=self.game_canvas.bbox("all"))
+
+    def update_game_canvas_width(self, event):
+        if hasattr(self, "game_canvas_window"):
+            self.game_canvas.itemconfigure(self.game_canvas_window, width=event.width)
+
+    def handle_mousewheel(self, event):
+        if self.game_frame is None or not hasattr(self, "game_canvas"):
+            return
+        self.game_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def return_to_setup(self):
         if self.game is not None and not self.game.game_finished:
@@ -421,13 +471,20 @@ class UserPlayApp:
                 return
 
         self.game = None
+        if hasattr(self, "game_canvas"):
+            self.game_canvas.unbind_all("<MouseWheel>")
         self.status_var.set("Choose a setup to begin.")
-        self.recommendation_var.set("No recommendation available yet.")
+        self.seating_var.set("")
         self.show_setup_screen()
 
     def clear_children(self, frame):
         for child in frame.winfo_children():
             child.destroy()
+
+    def snapshot_lookup(self, hand_snapshot):
+        if not hand_snapshot:
+            return {}
+        return {entry["player_index"]: entry for entry in hand_snapshot}
 
     def compute_human_advice(self):
         player = self.game.players[self.human_index]
@@ -436,7 +493,6 @@ class UserPlayApp:
 
         if player.agent is None:
             return {
-                "summary": "No advisor configured. Click any card in your hand to play it.",
                 "per_card": [
                     {
                         "index": index,
@@ -451,13 +507,10 @@ class UserPlayApp:
 
         recommended_action, action_values = player.agent.recommend_action(state_dict, actions_dict)
         per_card = []
-        recommended_labels = []
         for index, card in enumerate(player.cards_in_hand):
             action = card_action_name(card)
             q_value = action_values.get(action)
             recommended = action == recommended_action and q_value is not None
-            if recommended:
-                recommended_labels.append(f"{index}: {card_label(card)}")
             per_card.append(
                 {
                     "index": index,
@@ -468,23 +521,11 @@ class UserPlayApp:
                 }
             )
 
-        summary_lines = []
-        advisor_type = player.agent.__class__.__name__.replace("LearningAgent", "")
-        summary_lines.append(f"Advisor: {advisor_type or 'Agent'}")
-        if recommended_action is not None:
-            summary_lines.append(f"Recommended action: {recommended_action}")
-        if recommended_labels:
-            summary_lines.append("Recommended card(s): " + ", ".join(recommended_labels))
-        if action_values:
-            details = ", ".join(f"{action}={value:.3f}" for action, value in action_values.items())
-            summary_lines.append("Legal action Q-values: " + details)
-
         return {
-            "summary": "\n".join(summary_lines),
             "per_card": per_card,
         }
 
-    def render_cards(self, parent, cards, face_down=False):
+    def render_cards(self, parent, cards, face_down=False, max_columns=8, tile_width=12):
         if not cards:
             ttk.Label(parent, text="None").pack(anchor="w")
             return
@@ -492,59 +533,165 @@ class UserPlayApp:
         cards_frame = ttk.Frame(parent)
         cards_frame.pack(fill="x")
         for index, card in enumerate(cards):
-            text = f"Face Down {index + 1}" if face_down else card_label(card)
-            row = index // 5
-            column = index % 5
+            text = "Back" if face_down else card_label(card)
+            row = index // max_columns
+            column = index % max_columns
             tk.Label(
                 cards_frame,
                 text=text,
                 relief="ridge",
                 borderwidth=1,
-                padx=8,
-                pady=6,
-                width=14,
+                padx=5,
+                pady=3,
+                width=tile_width,
             ).grid(row=row, column=column, padx=3, pady=3, sticky="w")
 
-    def refresh_board(self):
+    def describe_relative_seat(self, offset):
+        total_players = self.game.n_players
+        if total_players == 2:
+            return "Across from you"
+        if total_players == 3:
+            return "Left of you" if offset == 1 else "Right of you"
+        if total_players == 4:
+            labels = {
+                1: "Left of you",
+                2: "Across from you",
+                3: "Right of you",
+            }
+            return labels.get(offset, f"Seat +{offset}")
+
+        labels = {
+            1: "Immediate left",
+            2: "Across-left",
+            3: "Across-right",
+            4: "Immediate right",
+        }
+        return labels.get(offset, f"Seat +{offset}")
+
+    def relative_layout_position(self, offset):
+        total_players = self.game.n_players
+        if total_players == 2:
+            return (0, 3, 6)
+        if total_players == 3:
+            positions = {
+                1: (1, 0, 5),
+                2: (1, 7, 5),
+            }
+            return positions[offset]
+        if total_players == 4:
+            positions = {
+                1: (1, 0, 5),
+                2: (0, 2, 8),
+                3: (1, 7, 5),
+            }
+            return positions[offset]
+
+        positions = {
+            1: (1, 0, 4),
+            2: (0, 0, 5),
+            3: (0, 7, 5),
+            4: (1, 8, 4),
+        }
+        return positions[offset]
+
+    def human_layout_position(self):
+        if self.game.n_players == 2:
+            return (2, 3, 6)
+        if self.game.n_players == 3:
+            return (2, 2, 8)
+        if self.game.n_players == 4:
+            return (2, 2, 8)
+        return (2, 2, 8)
+
+    def render_player_panel(self, parent, title, player, face_down_hand, show_hand=True, snapshot_entry=None):
+        panel = ttk.LabelFrame(parent, text=title, padding=8)
+
+        ttk.Label(panel, text=f"Score: {player.points}").pack(anchor="w")
+        cards_in_hand = snapshot_entry["cards_in_hand"] if snapshot_entry is not None else player.cards_in_hand
+        cards_on_table = snapshot_entry["cards_on_table"] if snapshot_entry is not None else player.cards_on_table
+
+        if show_hand:
+            if face_down_hand:
+                ttk.Label(panel, text=f"Hand ({len(cards_in_hand)})").pack(anchor="w", pady=(6, 0))
+                self.render_cards(panel, cards_in_hand, face_down=True, max_columns=10, tile_width=7)
+            else:
+                ttk.Label(panel, text=f"Hand ({len(cards_in_hand)})").pack(anchor="w", pady=(6, 0))
+                self.render_cards(panel, cards_in_hand, face_down=False, max_columns=8, tile_width=10)
+
+        ttk.Label(panel, text=f"Table ({len(cards_on_table)})").pack(anchor="w", pady=(6, 0))
+        self.render_cards(panel, cards_on_table, face_down=False, max_columns=8, tile_width=10)
+        return panel
+
+    def refresh_board(self, hand_snapshot=None):
         if self.game is None:
             return
 
-        self.clear_children(self.opponents_frame)
-        self.clear_children(self.human_table_frame)
+        self.clear_children(self.seat_map_frame)
+        self.clear_children(self.human_status_frame)
         self.clear_children(self.human_hand_frame)
+        snapshot_by_index = self.snapshot_lookup(hand_snapshot)
+        showing_completed_hand = bool(hand_snapshot)
 
-        self.status_var.set(
-            f"Hand {self.game.current_hand_number}/3 | Pick {self.game.current_turn_number + 1}/{self.game.n_cards_dealt_per_player}"
-        )
-
-        advice = self.compute_human_advice()
-        self.recommendation_var.set(advice["summary"])
-
-        opponent_players = [player for index, player in enumerate(self.game.players) if index != self.human_index]
-        for index, player in enumerate(opponent_players):
-            panel = ttk.LabelFrame(
-                self.opponents_frame,
-                text=f"{player.name} | Score {player.points} | {player.strategy}",
-                padding=10,
+        if showing_completed_hand:
+            self.status_var.set(f"Hand {self.game.current_hand_number}/3 | Hand Complete")
+        else:
+            self.status_var.set(
+                f"Hand {self.game.current_hand_number}/3 | Pick {self.game.current_turn_number + 1}/{self.game.n_cards_dealt_per_player}"
             )
-            row = index // 2
-            column = index % 2
-            panel.grid(row=row, column=column, sticky="nsew", padx=6, pady=6)
-            self.opponents_frame.columnconfigure(column, weight=1)
+        self.seating_var.set("Seating: cards pass left after each pick. Panels are placed relative to your seat.")
 
-            ttk.Label(panel, text="Hand").pack(anchor="w")
-            self.render_cards(panel, player.cards_in_hand, face_down=True)
+        advice = {"per_card": []} if showing_completed_hand else self.compute_human_advice()
 
-            ttk.Label(panel, text="Table").pack(anchor="w", pady=(8, 0))
-            self.render_cards(panel, player.cards_on_table, face_down=False)
+        opponent_players = [
+            (index, player)
+            for index, player in enumerate(self.game.players)
+            if index != self.human_index
+        ]
+        for seat_index, player in opponent_players:
+            offset = (seat_index - self.human_index) % self.game.n_players
+            relative_seat = self.describe_relative_seat(offset)
+            panel = self.render_player_panel(
+                self.seat_map_frame,
+                f"{relative_seat}: {player.name} | {player.strategy}",
+                player,
+                face_down_hand=True,
+                snapshot_entry=snapshot_by_index.get(seat_index),
+            )
+            row, column, columnspan = self.relative_layout_position(offset)
+            panel.grid(row=row, column=column, columnspan=columnspan, sticky="nsew", padx=6, pady=6)
 
         human_player = self.game.players[self.human_index]
-        self.human_frame.configure(text=f"{human_player.name} | Score {human_player.points} | Manual Play")
+        human_panel = self.render_player_panel(
+            self.seat_map_frame,
+            f"{human_player.name} | Manual Play",
+            human_player,
+            face_down_hand=False,
+            show_hand=False,
+            snapshot_entry=snapshot_by_index.get(self.human_index),
+        )
+        human_row, human_column, human_columnspan = self.human_layout_position()
+        human_panel.grid(
+            row=human_row,
+            column=human_column,
+            columnspan=human_columnspan,
+            sticky="nsew",
+            padx=6,
+            pady=6,
+        )
 
-        ttk.Label(self.human_table_frame, text="Your Table").pack(anchor="w")
-        self.render_cards(self.human_table_frame, human_player.cards_on_table, face_down=False)
+        if showing_completed_hand:
+            self.human_frame.configure(text=f"{human_player.name} | Hand Complete")
+            ttk.Label(
+                self.human_status_frame,
+                text="Final card placements are shown above. Review the completed hand, then continue in the dialog.",
+            ).pack(anchor="w")
+        else:
+            self.human_frame.configure(text=f"{human_player.name} | Click a Card to Play")
+            ttk.Label(
+                self.human_status_frame,
+                text="Choose a card below. Your seat is centered in the table view above.",
+            ).pack(anchor="w")
 
-        ttk.Label(self.human_hand_frame, text="Your Hand").pack(anchor="w")
         hand_buttons_frame = ttk.Frame(self.human_hand_frame)
         hand_buttons_frame.pack(fill="x", pady=(6, 0))
 
@@ -552,18 +699,18 @@ class UserPlayApp:
             q_text = "Q=n/a" if card_info["q_value"] is None else f"Q={card_info['q_value']:.3f}"
             button_text = f"{card_info['index']}: {card_info['card_label']}\n{q_text}"
             bg_color = "#d8f0d2" if card_info["recommended"] else "#f8f8f8"
-            row = card_info["index"] // 5
-            column = card_info["index"] % 5
+            row = card_info["index"] // 6
+            column = card_info["index"] % 6
             button = tk.Button(
                 hand_buttons_frame,
                 text=button_text,
                 command=lambda idx=card_info["index"]: self.play_human_card(idx),
                 relief="raised",
                 borderwidth=2,
-                padx=8,
-                pady=8,
-                width=16,
-                height=3,
+                padx=6,
+                pady=6,
+                width=14,
+                height=2,
                 bg=bg_color,
                 wraplength=120,
             )
@@ -620,6 +767,10 @@ class UserPlayApp:
             return
 
         if turn_summary["hand_complete"]:
+            self.completed_hand_snapshot = turn_summary["hand_summary"].get("table_snapshot")
+            self.refresh_board(hand_snapshot=self.completed_hand_snapshot)
+            self.root.update_idletasks()
+            self.root.update()
             button_text = "Show Final Scores" if turn_summary["game_complete"] else "Continue to Next Hand"
             self.format_hand_summary(turn_summary["hand_summary"], button_text)
 
@@ -628,12 +779,15 @@ class UserPlayApp:
                 self.return_to_setup_after_game()
                 return
 
+            self.completed_hand_snapshot = None
             self.game.advance_to_next_hand()
 
         self.refresh_board()
 
     def return_to_setup_after_game(self):
         self.game = None
+        if hasattr(self, "game_canvas"):
+            self.game_canvas.unbind_all("<MouseWheel>")
         if self.game_frame is not None:
             self.game_frame.destroy()
             self.game_frame = None
