@@ -1,6 +1,6 @@
 params = {
     # Total number of full Sushi Go games to simulate in one training/eval run.
-    "iterations": int(1e5),
+    "iterations": int(1e4),
 
     # Save trainable agents every N games during a run.
     "save_every": int(1e3),
@@ -11,7 +11,7 @@ params = {
 
     # When True, agents also learn from other players' observed transitions.
     # This increases training signal but can slow runs down substantially.
-    "enable_observation_learning": False,
+    "enable_observation_learning": True,
 
     # Scales the learning rate for tabular Q-learning observation updates.
     # Only relevant when observation learning is enabled.
