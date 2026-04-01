@@ -1,0 +1,23 @@
+{
+  "n_players": 4,
+  "human_name": "You",
+  "advisor_strategy": "deep q-learning",
+  "advisor_agent_file": "dqn_agent_4_players.pkl",
+  "opponents": [
+    {
+      "name": "Player 2",
+      "strategy": "hierarchy",
+      "agent_file": ""
+    },
+    {
+      "name": "Player 3",
+      "strategy": "hierarchy",
+      "agent_file": ""
+    },
+    {
+      "name": "Player 4",
+      "strategy": "random",
+      "agent_file": ""
+    }
+  ]
+}

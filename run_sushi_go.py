@@ -43,6 +43,7 @@ OPPONENT_POOL = [
     {"name": "Hierarchy Bot", "strategy": "hierarchy", "agent_file": None, "train": False},
     {"name": "Sequential Bot", "strategy": "sequential", "agent_file": None, "train": False},
     {"name": "Q Bot", "strategy": "q-learning", "agent_file": "q_table_4_players.pkl", "train": False},
+    {"name": "DQN Bot (20260331_004032)", "strategy": "deep q-learning", "agent_file": "dqn_agent_20260331_004032.pkl", "train": False},
     {"name": "DQN Bot (20260330_122614)", "strategy": "deep q-learning", "agent_file": "dqn_agent_20260330_122614.pkl", "train": False},
     {"name": "DQN Bot (20260222_085334)", "strategy": "deep q-learning", "agent_file": "dqn_agent_20260222_085334.pkl", "train": False},
     {"name": "DQN Bot (20260221_214105)", "strategy": "deep q-learning", "agent_file": "dqn_agent_20260221_214105.pkl", "train": False},
