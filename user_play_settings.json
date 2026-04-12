@@ -6,18 +6,47 @@
   "opponents": [
     {
       "name": "Player 2",
-      "strategy": "hierarchy",
-      "agent_file": ""
+      "strategy": "deep q-learning",
+      "agent_file": "dqn_agent_4_players.pkl"
     },
     {
       "name": "Player 3",
-      "strategy": "hierarchy",
-      "agent_file": ""
+      "strategy": "deep q-learning",
+      "agent_file": "dqn_agent_4_players.pkl"
     },
     {
       "name": "Player 4",
-      "strategy": "random",
+      "strategy": "hierarchy",
       "agent_file": ""
     }
-  ]
+  ],
+  "selected_mode": "real_time_strategy",
+  "real_time_strategy": {
+    "n_players": 5,
+    "strategy": "deep q-learning",
+    "agent_file": "dqn_agent_5_players.pkl"
+  },
+  "game_play": {
+    "n_players": 4,
+    "human_name": "You",
+    "advisor_strategy": "deep q-learning",
+    "advisor_agent_file": "dqn_agent_4_players.pkl",
+    "opponents": [
+      {
+        "name": "Player 2",
+        "strategy": "deep q-learning",
+        "agent_file": "dqn_agent_4_players.pkl"
+      },
+      {
+        "name": "Player 3",
+        "strategy": "deep q-learning",
+        "agent_file": "dqn_agent_4_players.pkl"
+      },
+      {
+        "name": "Player 4",
+        "strategy": "hierarchy",
+        "agent_file": ""
+      }
+    ]
+  }
 }

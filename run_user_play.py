@@ -1,57 +1,23 @@
 """Interactive Sushi Go runner with a simple Tkinter GUI for manual play."""
 
 import json
-from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 import config
 from game import SushiGo, card_action_name, card_label
-from players import Player
+from realtime_strategy_mode import RealTimeStrategyMode
 from state_action_reward import build_actions_dict, build_state_dict
-
-
-PLAYER_STRATEGIES = ["random", "sequential", "hierarchy", "q-learning", "deep q-learning"]
-ADVISOR_STRATEGIES = ["none", "q-learning", "deep q-learning"]
-SETTINGS_PATH = Path(__file__).with_name("user_play_settings.json")
-
-
-def resolve_agent_path(path_text):
-    """Resolve a saved or user-entered agent path against the repo root when possible."""
-    raw = (path_text or "").strip()
-    if not raw:
-        return None
-
-    candidate = Path(raw).expanduser()
-    if candidate.exists():
-        return candidate.resolve()
-
-    repo_candidate = (Path.cwd() / raw).resolve()
-    if repo_candidate.exists():
-        return repo_candidate
-
-    return candidate.resolve()
-
-
-def normalize_agent_path_for_save(path_text):
-    """Store paths relative to the repo when possible so the setup file stays portable."""
-    resolved = resolve_agent_path(path_text)
-    if resolved is None:
-        return ""
-
-    try:
-        return str(resolved.relative_to(Path.cwd()))
-    except ValueError:
-        return str(resolved)
-
-
-def build_inference_agent(strategy, agent_file):
-    """Instantiate a non-training agent for advice or inference-only opponents."""
-    stub = Player("Inference Agent", strategy, agent_file)
-    if stub.agent is None:
-        raise ValueError(f"Could not build an agent for strategy '{strategy}'.")
-    stub.agent.train = False
-    return stub.agent
+from user_play_common import (
+    ADVISOR_STRATEGIES,
+    PLAYER_STRATEGIES,
+    SETTINGS_PATH,
+    build_inference_agent,
+    matching_agent_files,
+    normalize_agent_path_for_save,
+    resolve_agent_path,
+    scan_agent_files,
+)
 
 
 class UserPlayApp:
@@ -65,16 +31,19 @@ class UserPlayApp:
 
         self.game = None
         self.human_index = 0
+        self.mode_frame = None
         self.setup_frame = None
         self.game_frame = None
+        self.realtime_mode = None
 
         self.saved_settings = self.load_settings()
-        self.available_agent_files = self.scan_agent_files()
+        game_play_settings = self.saved_settings.get("game_play", self.saved_settings)
+        self.available_agent_files = scan_agent_files()
 
-        self.n_players_var = tk.IntVar(value=self.saved_settings.get("n_players", 4))
-        self.human_name_var = tk.StringVar(value=self.saved_settings.get("human_name", "You"))
-        self.advisor_strategy_var = tk.StringVar(value=self.saved_settings.get("advisor_strategy", "none"))
-        self.advisor_file_var = tk.StringVar(value=self.saved_settings.get("advisor_agent_file", ""))
+        self.n_players_var = tk.IntVar(value=game_play_settings.get("n_players", 4))
+        self.human_name_var = tk.StringVar(value=game_play_settings.get("human_name", "You"))
+        self.advisor_strategy_var = tk.StringVar(value=game_play_settings.get("advisor_strategy", "none"))
+        self.advisor_file_var = tk.StringVar(value=game_play_settings.get("advisor_agent_file", ""))
 
         self.opponent_rows = []
 
@@ -82,7 +51,7 @@ class UserPlayApp:
         self.seating_var = tk.StringVar(value="")
         self.completed_hand_snapshot = None
 
-        self.show_setup_screen()
+        self.show_mode_selection_screen()
 
     def set_initial_window_size(self):
         screen_width = self.root.winfo_screenwidth()
@@ -107,28 +76,72 @@ class UserPlayApp:
             json.dump(data, handle, indent=2)
         self.saved_settings = data
 
-    def scan_agent_files(self):
-        return sorted(path.name for path in Path.cwd().glob("*.pkl"))
+    def save_mode_settings(self, mode_name, payload):
+        data = dict(self.saved_settings)
+        data["selected_mode"] = mode_name
+        data[mode_name] = payload
+        self.save_settings(data)
 
-    def matching_agent_files(self, strategy):
-        if strategy == "q-learning":
-            matches = [name for name in self.available_agent_files if "q_table" in name.lower()]
-        elif strategy == "deep q-learning":
-            matches = [name for name in self.available_agent_files if "dqn" in name.lower()]
-        else:
-            matches = []
+    def clear_active_screen(self):
+        if self.mode_frame is not None:
+            self.mode_frame.destroy()
+            self.mode_frame = None
 
-        return matches
-
-    def show_setup_screen(self):
         if self.setup_frame is not None:
             self.setup_frame.destroy()
+            self.setup_frame = None
 
         if self.game_frame is not None:
             self.game_frame.destroy()
             self.game_frame = None
 
-        self.available_agent_files = self.scan_agent_files()
+        if self.realtime_mode is not None:
+            self.realtime_mode.destroy()
+            self.realtime_mode = None
+
+    def show_mode_selection_screen(self):
+        self.clear_active_screen()
+
+        self.mode_frame = ttk.Frame(self.root, padding=24)
+        self.mode_frame.pack(fill="both", expand=True)
+
+        ttk.Label(self.mode_frame, text="Sushi Go User Play", font=("Segoe UI", 20, "bold")).pack(anchor="w")
+        ttk.Label(
+            self.mode_frame,
+            text="Choose whether you want to run a full GUI game or use the strategy helper during a physical game.",
+            wraplength=1000,
+            justify="left",
+        ).pack(anchor="w", pady=(8, 18))
+
+        buttons_frame = ttk.Frame(self.mode_frame)
+        buttons_frame.pack(fill="x", pady=(0, 12))
+
+        ttk.Button(
+            buttons_frame,
+            text="Game Play Mode",
+            command=self.show_game_play_setup,
+        ).pack(anchor="w", pady=6)
+        ttk.Button(
+            buttons_frame,
+            text="Real Time Strategy",
+            command=self.show_real_time_strategy_mode,
+        ).pack(anchor="w", pady=6)
+        ttk.Button(buttons_frame, text="Quit", command=self.root.destroy).pack(anchor="w", pady=6)
+
+    def show_real_time_strategy_mode(self):
+        self.clear_active_screen()
+        realtime_settings = self.saved_settings.get("real_time_strategy", {})
+        self.realtime_mode = RealTimeStrategyMode(
+            self.root,
+            realtime_settings,
+            save_settings_callback=self.save_mode_settings,
+            on_back=self.show_mode_selection_screen,
+        )
+        self.realtime_mode.show()
+
+    def show_game_play_setup(self):
+        self.clear_active_screen()
+        self.available_agent_files = scan_agent_files()
         self.setup_frame = ttk.Frame(self.root, padding=16)
         self.setup_frame.pack(fill="both", expand=True)
 
@@ -249,19 +262,20 @@ class UserPlayApp:
         buttons_frame.pack(fill="x")
 
         ttk.Button(buttons_frame, text="Start Game", command=self.start_game).pack(side="left")
+        ttk.Button(buttons_frame, text="Back to Modes", command=self.show_mode_selection_screen).pack(side="right")
         ttk.Button(buttons_frame, text="Quit", command=self.root.destroy).pack(side="right")
 
         self.update_advisor_controls()
         self.update_visible_player_rows()
 
     def refresh_agent_files(self):
-        self.available_agent_files = self.scan_agent_files()
+        self.available_agent_files = scan_agent_files()
         self.update_advisor_controls()
         for row in self.opponent_rows:
             self.update_player_row_controls(row)
 
     def set_combo_values(self, combo, strategy, current_value):
-        values = self.matching_agent_files(strategy)
+        values = matching_agent_files(self.available_agent_files, strategy)
         if current_value and current_value not in values:
             values = values + [current_value]
         combo["values"] = values + (["Browse..."] if strategy in {"q-learning", "deep q-learning"} else [])
@@ -301,7 +315,7 @@ class UserPlayApp:
             parent=self.root,
             title="Choose agent checkpoint",
             filetypes=[("Pickle files", "*.pkl"), ("All files", "*.*")],
-            initialdir=str(Path.cwd()),
+            initialdir=".",
         )
         if selected:
             target_var.set(normalize_agent_path_for_save(selected))
@@ -343,7 +357,7 @@ class UserPlayApp:
     def start_game(self):
         try:
             settings = self.build_saved_settings_payload()
-            self.save_settings(settings)
+            self.save_mode_settings("game_play", settings)
 
             n_players = settings["n_players"]
             human_name = settings["human_name"]
@@ -424,7 +438,7 @@ class UserPlayApp:
         header_top_row.pack(fill="x")
         ttk.Label(header_top_row, textvariable=self.status_var, font=("Segoe UI", 13, "bold")).pack(side="left")
         ttk.Button(header_top_row, text="Quit", command=self.root.destroy).pack(side="right")
-        ttk.Button(header_top_row, text="Return to Setup", command=self.return_to_setup).pack(side="right", padx=(0, 8))
+        ttk.Button(header_top_row, text="Return to Modes", command=self.return_to_setup).pack(side="right", padx=(0, 8))
 
         ttk.Label(
             header_frame,
@@ -464,7 +478,7 @@ class UserPlayApp:
         if self.game is not None and not self.game.game_finished:
             confirmed = messagebox.askyesno(
                 "Leave current game?",
-                "Return to setup and abandon the current game?",
+                "Return to the mode selection screen and abandon the current game?",
                 parent=self.root,
             )
             if not confirmed:
@@ -475,7 +489,7 @@ class UserPlayApp:
             self.game_canvas.unbind_all("<MouseWheel>")
         self.status_var.set("Choose a setup to begin.")
         self.seating_var.set("")
-        self.show_setup_screen()
+        self.show_mode_selection_screen()
 
     def clear_children(self, frame):
         for child in frame.winfo_children():
@@ -697,7 +711,7 @@ class UserPlayApp:
 
         for card_info in advice["per_card"]:
             q_text = "Q=n/a" if card_info["q_value"] is None else f"Q={card_info['q_value']:.3f}"
-            button_text = f"{card_info['index']}: {card_info['card_label']}\n{q_text}"
+            button_text = f"{card_info['index'] + 1}: {card_info['card_label']}\n{q_text}"
             bg_color = "#d8f0d2" if card_info["recommended"] else "#f8f8f8"
             row = card_info["index"] // 6
             column = card_info["index"] % 6
@@ -754,7 +768,7 @@ class UserPlayApp:
             lines.append(f"It's a tie between: {winner_text}")
         else:
             lines.append(f"Winner: {game_summary['winner_names'][0]}")
-        self.show_modal_dialog("Game Over", "\n".join(lines), "Return to Setup")
+        self.show_modal_dialog("Game Over", "\n".join(lines), "Return to Modes")
 
     def play_human_card(self, card_index):
         if self.game is None or self.game.game_finished:
@@ -791,7 +805,7 @@ class UserPlayApp:
         if self.game_frame is not None:
             self.game_frame.destroy()
             self.game_frame = None
-        self.show_setup_screen()
+        self.show_mode_selection_screen()
 
 
 def main():
